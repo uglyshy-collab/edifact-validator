@@ -1,0 +1,339 @@
+@page "/"
+@inject L10n L
+@inject PortaValidator Validator
+@implements IDisposable
+
+<PageTitle>@L["app.title"] — @L["app.subtitle"]</PageTitle>
+
+<div class="edi-app @(_theme == "dark" ? "theme-dark" : "")">
+
+    @* ── Header (Porta banner style) ── *@
+    <header class="edi-header">
+        <div class="edi-brand">
+            <span class="edi-title">@L["app.title"]</span>
+            <span class="edi-subtitle">@L["app.subtitle"]</span>
+        </div>
+        <div class="edi-controls">
+            <div class="btn-group btn-group-sm me-1">
+                @foreach (var lang in new[] { "de", "en", "cs" })
+                {
+                    <button class="btn @(L.Current == lang ? "btn-light" : "btn-outline-light")"
+                            @onclick="@(() => L.Set(lang))">@L[$"lang.{lang}"]</button>
+                }
+            </div>
+            <button class="btn btn-sm btn-outline-light" @onclick="ToggleTheme">
+                @(_theme == "dark" ? L["theme.light"] : L["theme.dark"])
+            </button>
+        </div>
+    </header>
+
+    @* ── Main ── *@
+    <main class="edi-main">
+
+        @if (_parseError is not null)
+        {
+            <div class="edi-alert">⚠ @_parseError</div>
+        }
+
+        @if (_state == AppState.Upload)
+        {
+            <div class="upload-section">
+                <h2>@L["upload.title"]</h2>
+                <p class="subtitle">@L["upload.subtitle"]</p>
+                <div class="upload-btn-wrap">
+                    <div class="upload-btn">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" fill="currentColor" viewBox="0 0 16 16">
+                            <path d="M.5 9.9a.5.5 0 0 1 .5.5v2.5a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-2.5a.5.5 0 0 1 1 0v2.5a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2v-2.5a.5.5 0 0 1 .5-.5"/>
+                            <path d="M7.646 1.146a.5.5 0 0 1 .708 0l3 3a.5.5 0 0 1-.708.708L8.5 2.707V11.5a.5.5 0 0 1-1 0V2.707L5.354 4.854a.5.5 0 1 1-.708-.708z"/>
+                        </svg>
+                        @L["upload.selectFile"]
+                    </div>
+                    <InputFile OnChange="OnFileSelected" accept=".edi,.txt" class="upload-input-overlay" />
+                </div>
+            </div>
+        }
+        else if (_state == AppState.Processing)
+        {
+            <div class="edi-spinner">
+                <div class="spinner-border" role="status" style="width:3rem;height:3rem;"></div>
+                <p class="mt-3">@L["upload.processing"]</p>
+            </div>
+        }
+        else
+        {
+            @* ── Toolbar ── *@
+            <div class="result-toolbar">
+                <button class="btn-back" @onclick="Reset">← @L["upload.loadNew"]</button>
+            </div>
+
+            @* ── Validation summary ── *@
+            <div class="result-summary">
+                <span class="badge fs-6 @(IsValid ? "bg-success" : "bg-danger")">
+                    @L[IsValid ? "result.valid" : "result.invalid"]
+                </span>
+                @if (ErrorCount > 0)
+                { <span class="badge bg-danger">@ErrorCount @L["result.errors"]</span> }
+                @if (WarnCount > 0)
+                { <span class="badge bg-warning text-dark">@WarnCount @L["result.warnings"]</span> }
+            </div>
+
+            @* ── Validation report ── *@
+            <div class="edi-card">
+                <div class="edi-card-header">@L["report.title"]</div>
+                @if (!_issues!.Any())
+                {
+                    <p class="p-3 mb-0" style="color:#28a745;font-size:.88rem;">✓ @L["report.noIssues"]</p>
+                }
+                else
+                {
+                    <div class="table-responsive">
+                        <table class="table table-sm edi-table mb-0">
+                            <thead>
+                                <tr>
+                                    <th>@L["report.seg"]</th>
+                                    <th>@L["report.line"]</th>
+                                    <th>@L["report.position"]</th>
+                                    <th>@L["report.code"]</th>
+                                    <th>@L["report.description"]</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var issue in _issues!)
+                                {
+                                    <tr class="@(issue.Severity == Severity.Error ? "row-error" : "row-warn")">
+                                        <td><strong>@issue.SegmentTag</strong></td>
+                                        <td>@(issue.LineNumber > 0 ? issue.LineNumber.ToString() : "–")</td>
+                                        <td><small>@(string.IsNullOrEmpty(issue.ElementPosition) ? "–" : issue.ElementPosition)</small></td>
+                                        <td><code>@issue.Code</code></td>
+                                        <td>@L[issue.MessageKey]</td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                }
+            </div>
+
+            @* ── Invoice content ── *@
+            @if (_invoice is not null)
+            {
+                @* Header info *@
+                <div class="edi-card">
+                    <div class="edi-card-header">@L["invoice.title"]</div>
+                    <div class="info-grid">
+                        <div class="info-item"><span class="info-label">@L["invoice.version"]</span><span>@_invoice.EdifactVersion</span></div>
+                        <div class="info-item"><span class="info-label">bgm</span><span>@_invoice.InvoiceId</span></div>
+                        <div class="info-item"><span class="info-label">@L["invoice.issueDate"]</span><span>@FmtDate(_invoice.IssueDate)</span></div>
+                        <div class="info-item"><span class="info-label">@L["invoice.delivDate"]</span><span>@FmtDate(_invoice.DeliveryDate)</span></div>
+                        <div class="info-item"><span class="info-label">@L["invoice.currency"]</span><span>@_invoice.CurrencyCode</span></div>
+                        <div class="info-item"><span class="info-label">@L["invoice.orderNo"]</span><span>@NullSafe(_invoice.OrderNumber)</span></div>
+                        <div class="info-item"><span class="info-label">@L["invoice.delivNote"]</span><span>@NullSafe(_invoice.DeliveryNote)</span></div>
+                        <div class="info-item"><span class="info-label">@L["invoice.custNo"]</span><span>@NullSafe(_invoice.CustomerNumber)</span></div>
+                    </div>
+                </div>
+
+                @* Parties *@
+                <div class="party-grid">
+                    @RenderParty(_invoice.Seller,         L["invoice.seller"])
+                    @RenderParty(_invoice.Buyer,          L["invoice.buyer"])
+                    @if (_invoice.DeliveryParty is not null)
+                    { @RenderParty(_invoice.DeliveryParty, L["invoice.delivery"]) }
+                    @if (_invoice.Invoicee is not null)
+                    { @RenderParty(_invoice.Invoicee,      L["invoice.invoicee"]) }
+                </div>
+
+                @* Line items *@
+                @if (_invoice.Lines.Any())
+                {
+                    <div class="edi-card">
+                        <div class="edi-card-header">@L["invoice.positions"]</div>
+                        <div class="table-responsive">
+                            <table class="table table-sm edi-table mb-0">
+                                <thead>
+                                    <tr>
+                                        <th>@L["invoice.pos"]</th>
+                                        <th>@L["invoice.gtin"]</th>
+                                        <th>@L["invoice.description"]</th>
+                                        <th class="text-end">@L["invoice.quantity"]</th>
+                                        <th class="text-end">@L["invoice.unitPrice"]</th>
+                                        <th class="text-end">@L["invoice.total"]</th>
+                                        <th class="text-end">@L["invoice.tax"] %</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var ln in _invoice.Lines)
+                                    {
+                                        <tr>
+                                            <td>@ln.LineId</td>
+                                            <td style="font-size:.76rem;color:#80bed7">@ln.Gtin</td>
+                                            <td>@ln.Description</td>
+                                            <td class="text-end">@ln.Quantity.ToString("N3") @ln.UnitCode</td>
+                                            <td class="text-end">@ln.UnitPrice.ToString("N2")</td>
+                                            <td class="text-end">@ln.LineTotal.ToString("N2")</td>
+                                            <td class="text-end">@ln.TaxPercent.ToString("N1")</td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                }
+
+                @* Tax + Totals *@
+                <div class="two-col">
+                    @if (_invoice.TaxLines.Any())
+                    {
+                        <div class="edi-card">
+                            <div class="edi-card-header">@L["invoice.taxTitle"]</div>
+                            <div class="table-responsive">
+                                <table class="table table-sm edi-table mb-0">
+                                    <thead>
+                                        <tr>
+                                            <th>@L["invoice.taxRate"]</th>
+                                            <th class="text-end">@L["invoice.taxBasis"]</th>
+                                            <th class="text-end">@L["invoice.taxAmount"]</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        @foreach (var t in _invoice.TaxLines)
+                                        {
+                                            <tr>
+                                                <td>@t.TaxPercent.ToString("N1") %</td>
+                                                <td class="text-end">@t.TaxableAmount.ToString("N2") @_invoice.CurrencyCode</td>
+                                                <td class="text-end">@t.TaxAmount.ToString("N2") @_invoice.CurrencyCode</td>
+                                            </tr>
+                                        }
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    }
+                    <div class="edi-card">
+                        <div class="edi-card-header">@L["invoice.totalsTitle"]</div>
+                        <table class="table table-sm edi-table mb-0">
+                            <tbody>
+                                <tr>
+                                    <td>@L["invoice.lineItems"]</td>
+                                    <td class="text-end">@_invoice.Totals.LineItemsTotal.ToString("N2") @_invoice.CurrencyCode</td>
+                                </tr>
+                                <tr>
+                                    <td>@L["invoice.taxTotal"]</td>
+                                    <td class="text-end">@_invoice.Totals.TaxAmount.ToString("N2") @_invoice.CurrencyCode</td>
+                                </tr>
+                                <tr style="font-weight:600">
+                                    <td>@L["invoice.payable"]</td>
+                                    <td class="text-end">@_invoice.Totals.TotalAmount.ToString("N2") @_invoice.CurrencyCode</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            }
+        }
+    </main>
+
+    @* ── Footer ── *@
+    <footer class="edi-footer">
+        © porta it-service
+    </footer>
+
+</div>
+
+@code {
+    enum AppState { Upload, Processing, Done }
+
+    AppState              _state      = AppState.Upload;
+    string                _theme      = "";
+    List<ValidationIssue>? _issues;
+    InvoiceData?          _invoice;
+    string?               _parseError;
+
+    int  ErrorCount => _issues?.Count(i => i.Severity == Severity.Error)   ?? 0;
+    int  WarnCount  => _issues?.Count(i => i.Severity == Severity.Warning) ?? 0;
+    bool IsValid    => ErrorCount == 0;
+
+    protected override void OnInitialized() => L.Changed += Refresh;
+    void Refresh() => StateHasChanged();
+    void ToggleTheme() => _theme = _theme == "dark" ? "" : "dark";
+
+    void Reset()
+    {
+        _state      = AppState.Upload;
+        _issues     = null;
+        _invoice    = null;
+        _parseError = null;
+    }
+
+    async Task OnFileSelected(InputFileChangeEventArgs e)
+    {
+        _parseError = null;
+
+        // Datei vollständig lesen BEVOR StateHasChanged() das InputFile aus dem DOM entfernt
+        string text;
+        try
+        {
+            using var stream = e.File.OpenReadStream(maxAllowedSize: 10 * 1024 * 1024);
+            using var reader = new System.IO.StreamReader(stream, System.Text.Encoding.Latin1);
+            text = await reader.ReadToEndAsync();
+        }
+        catch (Exception ex)
+        {
+            _parseError = ex.Message;
+            return;
+        }
+
+        // Erst jetzt State wechseln (InputFile wird aus DOM entfernt)
+        _state = AppState.Processing;
+        StateHasChanged();
+
+        try
+        {
+            var interchange = EdifactParser.Parse(text);
+            _issues = Validator.Validate(interchange);
+
+            if (interchange.Messages.Any())
+            {
+                try { _invoice = InvoiceMapper.Map(interchange.Messages[0], interchange.Delimiters); }
+                catch { /* Mapping-Fehler ignorieren */ }
+            }
+
+            _state = AppState.Done;
+        }
+        catch (Exception ex)
+        {
+            _parseError = ex.Message;
+            _state      = AppState.Upload;
+        }
+    }
+
+    RenderFragment RenderParty(InvoiceParty p, string title) => __builder =>
+    {
+        <div class="party-card">
+            <div class="party-card-header">@title</div>
+            <div class="party-card-body">
+                @if (!string.IsNullOrWhiteSpace(p.Gln))
+                { <div><span class="info-label">gln</span> @p.Gln</div> }
+                @if (!string.IsNullOrWhiteSpace(p.Name))
+                { <div style="font-weight:600">@p.Name</div> }
+                @if (!string.IsNullOrWhiteSpace(p.Street))
+                { <div>@p.Street</div> }
+                @if (!string.IsNullOrWhiteSpace(p.PostalCode) || !string.IsNullOrWhiteSpace(p.City))
+                { <div>@p.PostalCode @p.City</div> }
+                @if (!string.IsNullOrWhiteSpace(p.Country))
+                { <div>@p.Country</div> }
+                @if (!string.IsNullOrWhiteSpace(p.VatId))
+                { <div><span class="info-label">@L["invoice.vatId"]</span> @p.VatId</div> }
+                @if (!string.IsNullOrWhiteSpace(p.TaxNumber))
+                { <div><span class="info-label">@L["invoice.taxNo"]</span> @p.TaxNumber</div> }
+            </div>
+        </div>
+    };
+
+    static string FmtDate(DateOnly d) =>
+        d == DateOnly.MinValue ? "–" : d.ToString("dd.MM.yyyy");
+
+    static string NullSafe(string? s) =>
+        string.IsNullOrWhiteSpace(s) ? "–" : s;
+
+    public void Dispose() => L.Changed -= Refresh;
+}

@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(curl -s -u \"edidoc:E1aZ\\(*d_2.Os\" \"https://share.porta.de/EDI/Startseite.html\")",
+      "Bash(curl -s -u \"edidoc:E1aZ\\(*d_2.Os\" \"https://share.porta.de/EDI/Startseite_files/site1.css\")",
+      "Bash(dotnet build:*)",
+      "Bash(cmd.exe /c start powershell -NoExit -Command \"cd C:\\\\Users\\\\anw216872\\\\Projects\\\\edifact-validator; dotnet run\")"
+    ]
+  }
+}
