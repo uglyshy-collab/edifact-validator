@@ -1,0 +1,348 @@
+@page "/admin"
+@inject GlnStore Store
+@inject L10n L
+@implements IDisposable
+
+<PageTitle>@L["admin.title"] — @L["app.title"]</PageTitle>
+
+<div class="edi-app @(_theme == "dark" ? "theme-dark" : "")">
+    <header class="edi-header">
+        <div class="edi-brand">
+            <span class="edi-title">@L["app.title"]</span>
+            <span class="edi-subtitle">@L["admin.title"]</span>
+        </div>
+        <div class="edi-controls">
+            <a href="/" class="btn btn-sm btn-outline-light me-2">← @L["admin.backToApp"]</a>
+            @if (Store.IsAuthenticated)
+            {
+                <button class="btn btn-sm btn-outline-light" @onclick="Store.Logout">@L["admin.logout"]</button>
+            }
+        </div>
+    </header>
+
+    <main class="edi-main">
+
+        @if (!_ready)
+        {
+            <div class="edi-spinner">
+                <div class="spinner-border" role="status" style="width:2rem;height:2rem;"></div>
+            </div>
+        }
+        else if (!Store.IsAuthenticated)
+        {
+            @* ── Login ── *@
+            <div class="admin-login-wrap">
+                <div class="edi-card admin-login-card">
+                    <div class="edi-card-header">@L["admin.login"]</div>
+                    <div class="p-4">
+                        @if (_loginError)
+                        {
+                            <div class="edi-alert mb-3">@L["admin.loginError"]</div>
+                        }
+                        <div class="mb-3">
+                            <label class="form-label admin-label">@L["admin.user"]</label>
+                            <input class="form-control form-control-sm admin-input" @bind="_loginUser"
+                                   @onkeyup="OnLoginKey" placeholder="admin" />
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label admin-label">@L["admin.password"]</label>
+                            <input type="password" class="form-control form-control-sm admin-input"
+                                   @bind="_loginPass" @onkeyup="OnLoginKey" />
+                        </div>
+                        <button class="btn btn-sm btn-primary w-100" @onclick="DoLogin">@L["admin.loginBtn"]</button>
+                    </div>
+                </div>
+            </div>
+        }
+        else
+        {
+            @* ── Toolbar ── *@
+            <div class="result-toolbar" style="justify-content:space-between;flex-wrap:wrap;gap:.5rem;">
+                <div style="display:flex;gap:.5rem;flex-wrap:wrap;">
+                    <input class="form-control form-control-sm admin-search" placeholder="@L["admin.search"]"
+                           @bind="_search" @bind:event="oninput" />
+                    <select class="form-select form-select-sm" style="width:auto;"
+                            @bind="_filterGroup">
+                        <option value="">@L["admin.allGroups"]</option>
+                        @foreach (var g in Groups)
+                        { <option value="@g">@g</option> }
+                    </select>
+                </div>
+                <div style="display:flex;gap:.5rem;">
+                    <button class="btn btn-sm btn-success" @onclick="NewEntry">+ @L["admin.add"]</button>
+                    <button class="btn btn-sm btn-outline-secondary" @onclick="ShowResetConfirm">↺ @L["admin.reset"]</button>
+                    <button class="btn btn-sm btn-outline-secondary" @onclick="() => _showCredForm = true">⚙ @L["admin.changePw"]</button>
+                </div>
+            </div>
+
+            @* ── Reset confirmation ── *@
+            @if (_confirmReset)
+            {
+                <div class="edi-alert" style="display:flex;align-items:center;gap:1rem;">
+                    <span>@L["admin.resetConfirm"]</span>
+                    <button class="btn btn-sm btn-danger" @onclick="DoReset">@L["admin.resetYes"]</button>
+                    <button class="btn btn-sm btn-outline-secondary" @onclick="() => _confirmReset = false">@L["admin.cancel"]</button>
+                </div>
+            }
+
+            @* ── Password change form ── *@
+            @if (_showCredForm)
+            {
+                <div class="edi-card mb-3">
+                    <div class="edi-card-header">@L["admin.changePw"]</div>
+                    <div class="p-3" style="display:flex;gap:1rem;flex-wrap:wrap;align-items:flex-end;">
+                        <div>
+                            <label class="admin-label">@L["admin.user"]</label>
+                            <input class="form-control form-control-sm admin-input" @bind="_newUser" />
+                        </div>
+                        <div>
+                            <label class="admin-label">@L["admin.newPassword"]</label>
+                            <input type="password" class="form-control form-control-sm admin-input" @bind="_newPass" />
+                        </div>
+                        <div>
+                            <label class="admin-label">@L["admin.confirmPassword"]</label>
+                            <input type="password" class="form-control form-control-sm admin-input" @bind="_newPass2" />
+                        </div>
+                        <button class="btn btn-sm btn-primary" @onclick="SaveCreds">@L["admin.save"]</button>
+                        <button class="btn btn-sm btn-outline-secondary" @onclick="() => _showCredForm = false">@L["admin.cancel"]</button>
+                        @if (_credMsg is not null)
+                        { <span style="font-size:.8rem;color:#28a745;">@_credMsg</span> }
+                    </div>
+                </div>
+            }
+
+            @* ── Edit / Add form ── *@
+            @if (_editing is not null)
+            {
+                <div class="edi-card mb-3">
+                    <div class="edi-card-header">@(_isNew ? L["admin.add"] : L["admin.edit"])</div>
+                    <div class="p-3">
+                        <div class="admin-form-grid">
+                            <div>
+                                <label class="admin-label">@L["admin.fieldGroup"]</label>
+                                <input class="form-control form-control-sm admin-input" @bind="_editing.Group" />
+                            </div>
+                            <div>
+                                <label class="admin-label">@L["admin.fieldFilNr"]</label>
+                                <input type="number" class="form-control form-control-sm admin-input" @bind="_editing.FilNr" />
+                            </div>
+                            <div>
+                                <label class="admin-label">@L["admin.fieldName"]</label>
+                                <input class="form-control form-control-sm admin-input" @bind="_editing.Name" />
+                            </div>
+                            <div>
+                                <label class="admin-label">@L["admin.fieldOrt"]</label>
+                                <input class="form-control form-control-sm admin-input" @bind="_editing.Ort" />
+                            </div>
+                            <div>
+                                <label class="admin-label">NAD+BY (@L["invoice.buyer"])</label>
+                                <input class="form-control form-control-sm admin-input font-mono" @bind="_editing.GlnBy" maxlength="13" />
+                            </div>
+                            <div>
+                                <label class="admin-label">NAD+IV (@L["invoice.invoicee"])</label>
+                                <input class="form-control form-control-sm admin-input font-mono" @bind="_editing.GlnIv" maxlength="13" />
+                            </div>
+                            <div>
+                                <label class="admin-label">NAD+DP (@L["invoice.delivery"])</label>
+                                <input class="form-control form-control-sm admin-input font-mono" @bind="_editing.GlnDp" maxlength="13" />
+                            </div>
+                        </div>
+                        @if (_editError is not null)
+                        { <div class="edi-alert mt-2">@_editError</div> }
+                        <div class="mt-3" style="display:flex;gap:.5rem;">
+                            <button class="btn btn-sm btn-primary" @onclick="SaveEntry">@L["admin.save"]</button>
+                            <button class="btn btn-sm btn-outline-secondary" @onclick="CancelEdit">@L["admin.cancel"]</button>
+                        </div>
+                    </div>
+                </div>
+            }
+
+            @* ── GLN Table ── *@
+            <div class="edi-card">
+                <div class="edi-card-header">
+                    @L["admin.entries"] (@FilteredEntries.Count())
+                </div>
+                <div class="table-responsive">
+                    <table class="table table-sm edi-table mb-0">
+                        <thead>
+                            <tr>
+                                <th>@L["admin.fieldGroup"]</th>
+                                <th>@L["admin.fieldFilNr"]</th>
+                                <th>@L["admin.fieldName"]</th>
+                                <th>@L["admin.fieldOrt"]</th>
+                                <th>NAD+BY</th>
+                                <th>NAD+IV</th>
+                                <th>NAD+DP</th>
+                                <th></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var e in FilteredEntries)
+                            {
+                                <tr>
+                                    <td>@e.Group</td>
+                                    <td>@e.FilNr</td>
+                                    <td>@e.Name</td>
+                                    <td>@e.Ort</td>
+                                    <td><code>@e.GlnBy</code></td>
+                                    <td><code>@e.GlnIv</code></td>
+                                    <td><code>@e.GlnDp</code></td>
+                                    <td style="white-space:nowrap;">
+                                        <button class="btn btn-xs btn-outline-primary me-1" @onclick="() => EditEntry(e)">✎</button>
+                                        <button class="btn btn-xs btn-outline-danger" @onclick="() => DeleteEntry(e)">✕</button>
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        }
+
+    </main>
+
+    <footer class="edi-footer">© porta it-service</footer>
+</div>
+
+@code {
+    bool   _ready       = false;
+    string _theme       = "";
+    string _loginUser   = "";
+    string _loginPass   = "";
+    bool   _loginError  = false;
+    string _search      = "";
+    string _filterGroup = "";
+    bool   _confirmReset = false;
+    bool   _showCredForm = false;
+    string _newUser  = "";
+    string _newPass  = "";
+    string _newPass2 = "";
+    string? _credMsg = null;
+    string? _editError = null;
+    bool   _isNew = false;
+
+    EditableEntry? _editing;
+
+    IEnumerable<string> Groups => Store.Entries.Select(e => e.Group).Distinct().OrderBy(g => g);
+
+    IEnumerable<GlnEntry> FilteredEntries => Store.Entries
+        .Where(e => (string.IsNullOrEmpty(_filterGroup) || e.Group == _filterGroup)
+                 && (string.IsNullOrEmpty(_search)
+                     || e.Name.Contains(_search, StringComparison.OrdinalIgnoreCase)
+                     || e.Group.Contains(_search, StringComparison.OrdinalIgnoreCase)
+                     || e.GlnBy.Contains(_search)
+                     || e.GlnIv.Contains(_search)
+                     || e.GlnDp.Contains(_search)
+                     || e.FilNr.ToString().Contains(_search)))
+        .OrderBy(e => e.Group).ThenBy(e => e.FilNr);
+
+    protected override async Task OnInitializedAsync()
+    {
+        L.Changed += Refresh;
+        Store.Changed += Refresh;
+        await Store.InitAsync();
+        _ready = true;
+    }
+
+    void Refresh() => StateHasChanged();
+
+    async Task DoLogin()
+    {
+        _loginError = !await Store.LoginAsync(_loginUser, _loginPass);
+    }
+
+    async Task OnLoginKey(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter") await DoLogin();
+    }
+
+    void NewEntry()
+    {
+        _isNew = true;
+        _editError = null;
+        _editing = new EditableEntry();
+    }
+
+    void EditEntry(GlnEntry e)
+    {
+        _isNew = false;
+        _editError = null;
+        _editing = new EditableEntry(e);
+    }
+
+    async Task SaveEntry()
+    {
+        if (_editing is null) return;
+        if (string.IsNullOrWhiteSpace(_editing.Group) || string.IsNullOrWhiteSpace(_editing.Name))
+        {
+            _editError = "Firma und Name sind Pflichtfelder.";
+            return;
+        }
+        var entry = _editing.ToEntry();
+        if (_isNew)
+            await Store.AddAsync(entry);
+        else
+            await Store.UpdateAsync(_editing.Original!, entry);
+        _editing = null;
+    }
+
+    void CancelEdit() => _editing = null;
+
+    async Task DeleteEntry(GlnEntry e)
+    {
+        await Store.DeleteAsync(e);
+    }
+
+    void ShowResetConfirm() => _confirmReset = true;
+
+    async Task DoReset()
+    {
+        _confirmReset = false;
+        await Store.ResetToDefaultsAsync();
+    }
+
+    async Task SaveCreds()
+    {
+        _credMsg = null;
+        if (string.IsNullOrWhiteSpace(_newUser) || string.IsNullOrWhiteSpace(_newPass))
+        { _credMsg = "Benutzername und Passwort dürfen nicht leer sein."; return; }
+        if (_newPass != _newPass2)
+        { _credMsg = "Passwörter stimmen nicht überein."; return; }
+        await Store.SaveCredentialsAsync(_newUser, _newPass);
+        _credMsg = "✓ Gespeichert";
+        _newPass = _newPass2 = "";
+        _showCredForm = false;
+    }
+
+    public void Dispose()
+    {
+        L.Changed -= Refresh;
+        Store.Changed -= Refresh;
+    }
+
+    // Mutable wrapper for editing
+    class EditableEntry
+    {
+        public GlnEntry? Original { get; }
+        public string Group  { get; set; } = "";
+        public int    FilNr  { get; set; }
+        public string Name   { get; set; } = "";
+        public string Ort    { get; set; } = "";
+        public string GlnBy  { get; set; } = "";
+        public string GlnIv  { get; set; } = "";
+        public string GlnDp  { get; set; } = "";
+
+        public EditableEntry() { }
+        public EditableEntry(GlnEntry e)
+        {
+            Original = e;
+            Group = e.Group; FilNr = e.FilNr; Name = e.Name; Ort = e.Ort;
+            GlnBy = e.GlnBy; GlnIv = e.GlnIv; GlnDp = e.GlnDp;
+        }
+        public GlnEntry ToEntry() => new()
+        {
+            Group = Group, FilNr = FilNr, Name = Name, Ort = Ort,
+            GlnBy = GlnBy, GlnIv = GlnIv, GlnDp = GlnDp
+        };
+    }
+}

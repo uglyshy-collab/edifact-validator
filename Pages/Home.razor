@@ -1,6 +1,7 @@
 @page "/"
 @inject L10n L
 @inject PortaValidator Validator
+@inject GlnStore GlnStore
 @implements IDisposable
 
 <PageTitle>@L["app.title"] — @L["app.subtitle"]</PageTitle>
@@ -24,6 +25,7 @@
             <button class="btn btn-sm btn-outline-light" @onclick="ToggleTheme">
                 @(_theme == "dark" ? L["theme.light"] : L["theme.dark"])
             </button>
+            <a href="/admin" class="btn btn-sm btn-outline-light ms-1">⚙</a>
         </div>
     </header>
 
@@ -342,9 +344,9 @@
     string _selectedGroup    = "";
     string _selectedEntryKey = "";
 
-    IEnumerable<string>     Groups          => GlnDatabase.All.Select(e => e.Group).Distinct();
-    IEnumerable<GlnEntry>   FilteredEntries => GlnDatabase.All.Where(e => e.Group == _selectedGroup);
-    GlnEntry?               SelectedEntry   => GlnDatabase.All.FirstOrDefault(e => GlnKey(e) == _selectedEntryKey);
+    IEnumerable<string>     Groups          => GlnStore.Entries.Select(e => e.Group).Distinct();
+    IEnumerable<GlnEntry>   FilteredEntries => GlnStore.Entries.Where(e => e.Group == _selectedGroup);
+    GlnEntry?               SelectedEntry   => GlnStore.Entries.FirstOrDefault(e => GlnKey(e) == _selectedEntryKey);
 
     static string GlnKey(GlnEntry e) => $"{e.Group}|{e.FilNr}";
 
@@ -358,7 +360,11 @@
     int  WarnCount  => _issues?.Count(i => i.Severity == Severity.Warning) ?? 0;
     bool IsValid    => ErrorCount == 0;
 
-    protected override void OnInitialized() => L.Changed += Refresh;
+    protected override async Task OnInitializedAsync()
+    {
+        L.Changed += Refresh;
+        await GlnStore.InitAsync();
+    }
     void Refresh() => StateHasChanged();
     void ToggleTheme() => _theme = _theme == "dark" ? "" : "dark";
 

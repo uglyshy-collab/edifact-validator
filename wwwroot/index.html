@@ -29,6 +29,13 @@
         <a href="" class="reload">Reload</a>
         <a class="dismiss">🗙</a>
     </div>
+    <script>
+        window.ls = {
+            get: (k) => localStorage.getItem(k),
+            set: (k, v) => localStorage.setItem(k, v),
+            del: (k) => localStorage.removeItem(k)
+        };
+    </script>
     <script src="_framework/blazor.webassembly.js"></script>
 </body>
 

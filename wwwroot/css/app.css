@@ -443,6 +443,44 @@ a:hover { color: #6a9dd3; }
     font-size: .78rem;
 }
 
+/* ── Admin ── */
+.admin-login-wrap {
+    display: flex;
+    justify-content: center;
+    padding-top: 4rem;
+}
+.admin-login-card {
+    width: 100%;
+    max-width: 360px;
+}
+.admin-label {
+    font-size: .78rem;
+    color: #5a8fa8;
+    margin-bottom: .2rem;
+    display: block;
+}
+.admin-input {
+    font-family: 'Sometype Mono', monospace;
+    font-size: .83rem;
+}
+.admin-search {
+    width: 220px;
+    font-family: 'Sometype Mono', monospace;
+    font-size: .83rem;
+}
+.admin-form-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: .75rem;
+}
+.btn-xs {
+    padding: .1rem .4rem;
+    font-size: .75rem;
+}
+.font-mono {
+    font-family: 'Sometype Mono', monospace;
+}
+
 /* ── Responsive ── */
 @media (max-width: 768px) {
     .edi-header  { min-height: 64px; }
