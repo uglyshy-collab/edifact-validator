@@ -36,6 +36,40 @@
             del: (k) => localStorage.removeItem(k)
         };
 
+        // ── Drag & Drop upload ────────────────────────────────────────────────
+        window.initDropZone = function(zoneId, inputId) {
+            const zone  = document.getElementById(zoneId);
+            const input = document.getElementById(inputId);
+            if (!zone || !input || zone._dropInit) return;
+            zone._dropInit = true;
+
+            let n = 0; // enter/leave counter to avoid flicker on child elements
+
+            // Listen on both zone and the overlay input so nothing is missed
+            [zone, input].forEach(el => {
+                el.addEventListener('dragenter', e => {
+                    n++;
+                    zone.classList.add('drag-over');
+                });
+                el.addEventListener('dragleave', e => {
+                    n--;
+                    if (n <= 0) { n = 0; zone.classList.remove('drag-over'); }
+                });
+                el.addEventListener('dragover', e => e.preventDefault());
+                el.addEventListener('drop', e => {
+                    n = 0;
+                    zone.classList.remove('drag-over');
+                    // route dropped files through the hidden input so Blazor OnChange fires
+                    const dt = new DataTransfer();
+                    for (const f of e.dataTransfer.files) dt.items.add(f);
+                    if (dt.files.length) {
+                        input.files = dt.files;
+                        input.dispatchEvent(new Event('change', { bubbles: true }));
+                    }
+                });
+            });
+        };
+
         // ── File download helper ──────────────────────────────────────────────
         window.downloadFile = (name, content, mime) => {
             const b = new Blob([content], { type: mime });

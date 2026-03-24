@@ -3,6 +3,7 @@
 @inject PortaValidator Validator
 @inject OrdrspValidator OrdrspV
 @inject DesadvValidator DesadvV
+@inject InvrptValidator InvrptV
 @inject GlnStore GlnStore
 @inject HistoryService History
 @inject IJSRuntime JS
@@ -12,7 +13,7 @@
 
 <div class="edi-app @(_theme == "dark" ? "theme-dark" : "")">
 
-    @* ── Header (Porta banner style) ── *@
+    @* ── Header ── *@
     <header class="edi-header">
         <div class="edi-brand">
             <span class="edi-title">@L["app.title"]</span>
@@ -29,6 +30,7 @@
             <button class="btn btn-sm btn-outline-light" @onclick="ToggleTheme">
                 @(_theme == "dark" ? L["theme.light"] : L["theme.dark"])
             </button>
+            <a href="/diff"  class="btn btn-sm btn-outline-light ms-1">⇄ @L["nav.diff"]</a>
             <a href="/admin" class="btn btn-sm btn-outline-light ms-1">⚙</a>
         </div>
     </header>
@@ -105,7 +107,7 @@
                     }
                 </div>
 
-                <div class="upload-btn-wrap">
+                <div class="upload-btn-wrap" id="edi-upload-zone">
                     <div class="upload-btn">
                         <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" fill="currentColor" viewBox="0 0 16 16">
                             <path d="M.5 9.9a.5.5 0 0 1 .5.5v2.5a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-2.5a.5.5 0 0 1 1 0v2.5a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2v-2.5a.5.5 0 0 1 .5-.5"/>
@@ -113,7 +115,7 @@
                         </svg>
                         @L["upload.selectFile"]
                     </div>
-                    <InputFile OnChange="OnFileSelected" accept=".edi,.txt" class="upload-input-overlay" />
+                    <InputFile id="edi-file-input" OnChange="OnFileSelected" accept=".edi,.txt" class="upload-input-overlay" multiple />
                 </div>
             </div>
         }
@@ -126,210 +128,394 @@
         }
         else
         {
-            @* ── Toolbar + Summary ── *@
+            @* ── Toolbar ── *@
             <div class="result-toolbar">
                 <button class="btn-back" @onclick="Reset">← @L["upload.loadNew"]</button>
                 <div class="result-badges">
-                    @if (!string.IsNullOrEmpty(_messageType))
+                    @if (_isBatch)
                     {
-                        <span class="badge bg-secondary" style="font-size:.75rem;">@_messageType</span>
+                        var batchErrors = _batchResults!.Sum(r => r.ErrorCount); var batchWarns = _batchResults!.Sum(r => r.WarnCount);
+                        <span class="badge bg-secondary" style="font-size:.75rem;">Batch (@_batchResults!.Count @L["batch.files"])</span>
+                        <span class="badge fs-6 @(_batchResults!.All(r => r.IsValid) ? "bg-success" : "bg-danger")">
+                            @L[_batchResults!.All(r => r.IsValid) ? "result.valid" : "result.invalid"]
+                        </span>
+                        @if (batchErrors > 0) { <span class="badge bg-danger">@batchErrors @L["result.errors"]</span> }
+                        @if (batchWarns  > 0) { <span class="badge bg-warning text-dark">@batchWarns @L["result.warnings"]</span> }
                     }
-                    <span class="badge fs-6 @(IsValid ? "bg-success" : "bg-danger")">
-                        @L[IsValid ? "result.valid" : "result.invalid"]
-                    </span>
-                    @if (ErrorCount > 0)
-                    { <span class="badge bg-danger">@ErrorCount @L["result.errors"]</span> }
-                    @if (WarnCount > 0)
-                    { <span class="badge bg-warning text-dark">@WarnCount @L["result.warnings"]</span> }
+                    else
+                    {
+                        @if (!string.IsNullOrEmpty(_messageType))
+                        { <span class="badge bg-secondary" style="font-size:.75rem;">@_messageType</span> }
+                        <span class="badge fs-6 @(IsValid ? "bg-success" : "bg-danger")">
+                            @L[IsValid ? "result.valid" : "result.invalid"]
+                        </span>
+                        @if (ErrorCount > 0) { <span class="badge bg-danger">@ErrorCount @L["result.errors"]</span> }
+                        @if (WarnCount  > 0) { <span class="badge bg-warning text-dark">@WarnCount @L["result.warnings"]</span> }
+                    }
                 </div>
                 <div class="result-actions">
-                    <button class="btn btn-sm btn-outline-secondary" @onclick="PrintReport">🖨 @L["report.print"]</button>
-                    <button class="btn btn-sm btn-outline-secondary" @onclick="DownloadReport">⬇ @L["report.download"]</button>
+                    @if (!_isBatch)
+                    {
+                        <button class="btn btn-sm btn-outline-secondary" @onclick="PrintReport">🖨 @L["report.print"]</button>
+                        <button class="btn btn-sm btn-outline-secondary" @onclick="DownloadReport">⬇ @L["report.download"]</button>
+                    }
+                    <button class="btn btn-sm btn-outline-secondary" @onclick="DownloadCsv">⬇ @L["report.downloadCsv"]</button>
                 </div>
             </div>
 
-            @* ── Validation report ── *@
-            <div class="edi-card">
-                <div class="edi-card-header">@L["report.title"]</div>
-                @if (!_issues!.Any())
-                {
-                    <p class="p-3 mb-0" style="color:#28a745;font-size:.88rem;">✓ @L["report.noIssues"]</p>
-                }
-                else
-                {
-                    <div class="table-responsive">
-                        <table class="table table-sm edi-table mb-0">
-                            <thead>
-                                <tr>
-                                    <th>@L["report.seg"]</th>
-                                    <th>@L["report.line"]</th>
-                                    <th>@L["report.position"]</th>
-                                    <th>@L["report.code"]</th>
-                                    <th>@L["report.description"]</th>
+            @if (_isBatch)
+            {
+                @* ── Batch results ── *@
+                <div class="edi-card">
+                    <div class="edi-card-header">Batch – @_batchResults!.Count @L["batch.files"]</div>
+                    <table class="batch-summary-table">
+                        <thead>
+                            <tr>
+                                <th>@L["report.seg"] / @L["admin.historyFile"]</th>
+                                <th>Typ</th>
+                                <th>@L["admin.statsStatus"]</th>
+                                <th class="text-end">@L["admin.statsErrors"]</th>
+                                <th class="text-end">@L["admin.statsWarnings"]</th>
+                                <th style="width:2rem"></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @for (int bi = 0; bi < _batchResults!.Count; bi++)
+                            {
+                                var r = _batchResults[bi];
+                                var localBi = bi;
+                                <tr style="cursor:pointer" @onclick="() => _expandedBatch = _expandedBatch == localBi ? null : localBi">
+                                    <td style="white-space:nowrap;font-size:.82rem;">@r.FileName</td>
+                                    <td><span class="badge bg-secondary" style="font-size:.7rem;">@(string.IsNullOrEmpty(r.MessageType) ? "?" : r.MessageType)</span></td>
+                                    <td><span class="badge @(r.IsValid ? "bg-success" : "bg-danger")" style="font-size:.7rem;">@L[r.IsValid ? "result.valid" : "result.invalid"]</span></td>
+                                    <td class="text-end" style="font-size:.82rem;">@(r.ErrorCount > 0 ? r.ErrorCount.ToString() : "–")</td>
+                                    <td class="text-end" style="font-size:.82rem;">@(r.WarnCount  > 0 ? r.WarnCount.ToString()  : "–")</td>
+                                    <td style="text-align:center;color:#80bed7;">@(_expandedBatch == localBi ? "▲" : "▼")</td>
                                 </tr>
-                            </thead>
-                            <tbody>
-                                @foreach (var issue in _issues!)
+                                @if (_expandedBatch == localBi)
                                 {
-                                    <tr class="@(issue.Severity == Severity.Error ? "row-error" : "row-warn")">
-                                        <td><strong>@issue.SegmentTag</strong></td>
-                                        <td>@(issue.LineNumber > 0 ? issue.LineNumber.ToString() : "–")</td>
-                                        <td><small>@(string.IsNullOrEmpty(issue.ElementPosition) ? "–" : issue.ElementPosition)</small></td>
-                                        <td><code>@issue.Code</code></td>
-                                        <td>@L[issue.MessageKey]</td>
+                                    <tr class="batch-expand-row">
+                                        <td colspan="6">
+                                            <div class="batch-expand-inner">
+                                                @if (!r.Issues.Any())
+                                                {
+                                                    <p style="color:#28a745;font-size:.85rem;margin:0">✓ @L["report.noIssues"]</p>
+                                                }
+                                                else
+                                                {
+                                                    <table class="table table-sm edi-table mb-0" style="font-size:.78rem;">
+                                                        <thead><tr>
+                                                            <th>@L["report.seg"]</th>
+                                                            <th>@L["report.line"]</th>
+                                                            <th>@L["report.code"]</th>
+                                                            <th>@L["report.description"]</th>
+                                                        </tr></thead>
+                                                        <tbody>
+                                                            @foreach (var issue in r.Issues)
+                                                            {
+                                                                <tr class="@(issue.Severity == Severity.Error ? "row-error" : "row-warn")">
+                                                                    <td><strong>@issue.SegmentTag</strong></td>
+                                                                    <td>@(issue.LineNumber > 0 ? issue.LineNumber.ToString() : "–")</td>
+                                                                    <td><code>@issue.Code</code></td>
+                                                                    <td>@L[issue.MessageKey]</td>
+                                                                </tr>
+                                                            }
+                                                        </tbody>
+                                                    </table>
+                                                }
+                                            </div>
+                                        </td>
                                     </tr>
                                 }
-                            </tbody>
-                        </table>
-                    </div>
-                }
-            </div>
-
-            @* ── GLN comparison ── *@
-            <div class="edi-card">
-                <div class="edi-card-header">@L["gln.comparison"]</div>
-                @if (SelectedEntry is {} glnSel)
-                {
-                    <div class="table-responsive">
-                        <table class="table table-sm edi-table mb-0">
-                            <thead>
-                                <tr>
-                                    <th>@L["gln.segment"]</th>
-                                    <th>@L["gln.expectedCol"]</th>
-                                    <th>@L["gln.found"]</th>
-                                    <th>@L["gln.result"]</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                @GlnRow("NAD+BY", L["invoice.buyer"],    glnSel.GlnBy, _invoice?.Buyer?.Gln)
-                                @if (!string.IsNullOrEmpty(glnSel.GlnIv))
-                                { @GlnRow("NAD+IV", L["invoice.invoicee"], glnSel.GlnIv, _invoice?.Invoicee?.Gln) }
-                                @if (!string.IsNullOrEmpty(glnSel.GlnDp))
-                                { @GlnRow("NAD+DP", L["invoice.delivery"], glnSel.GlnDp, _invoice?.DeliveryParty?.Gln) }
-                            </tbody>
-                        </table>
-                    </div>
-                }
-                else
-                {
-                    <p class="p-3 mb-0" style="font-size:.88rem;color:#888;">@L["gln.noMatch"]</p>
-                }
-            </div>
-
-            @* ── Invoice content ── *@
-            @if (_invoice is not null)
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
+            else
             {
-                @* Header info *@
-                <div class="edi-card">
-                    <div class="edi-card-header">@L["invoice.title"]</div>
-                    <div class="info-grid">
-                        <div class="info-item"><span class="info-label">@L["invoice.version"]</span><span>@_invoice.EdifactVersion</span></div>
-                        <div class="info-item"><span class="info-label">bgm</span><span>@_invoice.InvoiceId</span></div>
-                        <div class="info-item"><span class="info-label">@L["invoice.issueDate"]</span><span>@FmtDate(_invoice.IssueDate)</span></div>
-                        <div class="info-item"><span class="info-label">@L["invoice.delivDate"]</span><span>@FmtDate(_invoice.DeliveryDate)</span></div>
-                        <div class="info-item"><span class="info-label">@L["invoice.currency"]</span><span>@_invoice.CurrencyCode</span></div>
-                        <div class="info-item"><span class="info-label">@L["invoice.orderNo"]</span><span>@NullSafe(_invoice.OrderNumber)</span></div>
-                        <div class="info-item"><span class="info-label">@L["invoice.delivNote"]</span><span>@NullSafe(_invoice.DeliveryNote)</span></div>
-                        <div class="info-item"><span class="info-label">@L["invoice.custNo"]</span><span>@NullSafe(_invoice.CustomerNumber)</span></div>
+                @* ── Result view tabs ── *@
+                <div style="margin-bottom:.75rem;">
+                    <div class="result-view-tabs">
+                        <button class="result-view-tab @(_resultTab == "report"   ? "active" : "")" @onclick='() => _resultTab = "report"'>@L["report.title"]</button>
+                        <button class="result-view-tab @(_resultTab == "segments" ? "active" : "")" @onclick='() => { _resultTab = "segments"; _expandedSegs.Clear(); }'>@L["segments.tab"] @(_interchange?.AllSegments.Count > 0 ? $"({_interchange.AllSegments.Count})" : "")</button>
                     </div>
                 </div>
 
-                @* Parties *@
-                <div class="party-grid">
-                    @RenderParty(_invoice.Seller,         L["invoice.seller"])
-                    @RenderParty(_invoice.Buyer,          L["invoice.buyer"])
-                    @if (_invoice.DeliveryParty is not null)
-                    { @RenderParty(_invoice.DeliveryParty, L["invoice.delivery"]) }
-                    @if (_invoice.Invoicee is not null)
-                    { @RenderParty(_invoice.Invoicee,      L["invoice.invoicee"]) }
-                </div>
-
-                @* Line items *@
-                @if (_invoice.Lines.Any())
+                @if (_resultTab == "report")
                 {
+                    @* ── Validation report ── *@
                     <div class="edi-card">
-                        <div class="edi-card-header">@L["invoice.positions"]</div>
-                        <div class="table-responsive">
-                            <table class="table table-sm edi-table mb-0">
-                                <thead>
-                                    <tr>
-                                        <th>@L["invoice.pos"]</th>
-                                        <th>@L["invoice.gtin"]</th>
-                                        <th>@L["invoice.description"]</th>
-                                        <th class="text-end">@L["invoice.quantity"]</th>
-                                        <th class="text-end">@L["invoice.unitPrice"]</th>
-                                        <th class="text-end">@L["invoice.total"]</th>
-                                        <th class="text-end">@L["invoice.tax"] %</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    @foreach (var ln in _invoice.Lines)
-                                    {
-                                        <tr>
-                                            <td>@ln.LineId</td>
-                                            <td style="font-size:.76rem;color:#80bed7">@ln.Gtin</td>
-                                            <td>@ln.Description</td>
-                                            <td class="text-end">@ln.Quantity.ToString("N3") @ln.UnitCode</td>
-                                            <td class="text-end">@ln.UnitPrice.ToString("N2")</td>
-                                            <td class="text-end">@ln.LineTotal.ToString("N2")</td>
-                                            <td class="text-end">@ln.TaxPercent.ToString("N1")</td>
-                                        </tr>
-                                    }
-                                </tbody>
-                            </table>
-                        </div>
-                    </div>
-                }
-
-                @* Tax + Totals *@
-                <div class="two-col">
-                    @if (_invoice.TaxLines.Any())
-                    {
-                        <div class="edi-card">
-                            <div class="edi-card-header">@L["invoice.taxTitle"]</div>
+                        <div class="edi-card-header">@L["report.title"]</div>
+                        @if (!_issues!.Any(i => !IsRecommendation(i.Code)))
+                        {
+                            <p class="p-3 mb-0" style="color:#28a745;font-size:.88rem;">✓ @L["report.noIssues"]</p>
+                        }
+                        else
+                        {
                             <div class="table-responsive">
                                 <table class="table table-sm edi-table mb-0">
                                     <thead>
                                         <tr>
-                                            <th>@L["invoice.taxRate"]</th>
-                                            <th class="text-end">@L["invoice.taxBasis"]</th>
-                                            <th class="text-end">@L["invoice.taxAmount"]</th>
+                                            <th>@L["report.seg"]</th>
+                                            <th>@L["report.line"]</th>
+                                            <th>@L["report.position"]</th>
+                                            <th>@L["report.code"]</th>
+                                            <th>@L["report.description"]</th>
                                         </tr>
                                     </thead>
                                     <tbody>
-                                        @foreach (var t in _invoice.TaxLines)
+                                        @foreach (var issue in _issues!.Where(i => !IsRecommendation(i.Code)))
                                         {
-                                            <tr>
-                                                <td>@t.TaxPercent.ToString("N1") %</td>
-                                                <td class="text-end">@t.TaxableAmount.ToString("N2") @_invoice.CurrencyCode</td>
-                                                <td class="text-end">@t.TaxAmount.ToString("N2") @_invoice.CurrencyCode</td>
+                                            <tr class="@(issue.Severity == Severity.Error ? "row-error" : "row-warn")">
+                                                <td><strong>@issue.SegmentTag</strong></td>
+                                                <td>@(issue.LineNumber > 0 ? issue.LineNumber.ToString() : "–")</td>
+                                                <td><small>@(string.IsNullOrEmpty(issue.ElementPosition) ? "–" : issue.ElementPosition)</small></td>
+                                                <td><code>@issue.Code</code></td>
+                                                <td>@L[issue.MessageKey]</td>
                                             </tr>
                                         }
                                     </tbody>
                                 </table>
                             </div>
+                        }
+                    </div>
+
+                    @* ── Empfehlungen ── *@
+                    <div class="edi-card">
+                        <div class="edi-card-header" style="color:#c8940a;">@L["report.recommendations"]</div>
+                        @if (!_issues!.Any(i => IsRecommendation(i.Code)))
+                        {
+                            <p class="p-3 mb-0" style="color:#5a8fa8;font-size:.88rem;">@L["report.noRecs"]</p>
+                        }
+                        else
+                        {
+                            <div class="table-responsive">
+                                <table class="table table-sm edi-table mb-0">
+                                    <thead>
+                                        <tr>
+                                            <th>@L["report.seg"]</th>
+                                            <th>@L["report.line"]</th>
+                                            <th>@L["report.position"]</th>
+                                            <th>@L["report.code"]</th>
+                                            <th>@L["report.description"]</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        @foreach (var issue in _issues!.Where(i => IsRecommendation(i.Code)))
+                                        {
+                                            <tr class="row-warn">
+                                                <td><strong>@issue.SegmentTag</strong></td>
+                                                <td>@(issue.LineNumber > 0 ? issue.LineNumber.ToString() : "–")</td>
+                                                <td><small>@(string.IsNullOrEmpty(issue.ElementPosition) ? "–" : issue.ElementPosition)</small></td>
+                                                <td><code>@issue.Code</code></td>
+                                                <td>@L[issue.MessageKey]</td>
+                                            </tr>
+                                        }
+                                    </tbody>
+                                </table>
+                            </div>
+                        }
+                    </div>
+
+                    @* ── GLN comparison ── *@
+                    <div class="edi-card">
+                        <div class="edi-card-header">@L["gln.comparison"]</div>
+                        @if (SelectedEntry is {} glnSel)
+                        {
+                            <div class="table-responsive">
+                                <table class="table table-sm edi-table mb-0">
+                                    <thead>
+                                        <tr>
+                                            <th>@L["gln.segment"]</th>
+                                            <th>@L["gln.expectedCol"]</th>
+                                            <th>@L["gln.found"]</th>
+                                            <th>@L["gln.result"]</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        @GlnRow("NAD+BY", L["invoice.buyer"],    glnSel.GlnBy, _invoice?.Buyer?.Gln)
+                                        @if (!string.IsNullOrEmpty(glnSel.GlnIv))
+                                        { @GlnRow("NAD+IV", L["invoice.invoicee"], glnSel.GlnIv, _invoice?.Invoicee?.Gln) }
+                                        @if (!string.IsNullOrEmpty(glnSel.GlnDp))
+                                        { @GlnRow("NAD+DP", L["invoice.delivery"], glnSel.GlnDp, _invoice?.DeliveryParty?.Gln) }
+                                    </tbody>
+                                </table>
+                            </div>
+                        }
+                        else
+                        {
+                            <p class="p-3 mb-0" style="font-size:.88rem;color:#888;">@L["gln.noMatch"]</p>
+                        }
+                    </div>
+
+                    @* ── Invoice content ── *@
+                    @if (_invoice is not null)
+                    {
+                        <div class="edi-card">
+                            <div class="edi-card-header">@L["invoice.title"]</div>
+                            <div class="info-grid">
+                                <div class="info-item"><span class="info-label">@L["invoice.version"]</span><span>@_invoice.EdifactVersion</span></div>
+                                <div class="info-item"><span class="info-label">bgm</span><span>@_invoice.InvoiceId</span></div>
+                                <div class="info-item"><span class="info-label">@L["invoice.issueDate"]</span><span>@FmtDate(_invoice.IssueDate)</span></div>
+                                <div class="info-item"><span class="info-label">@L["invoice.delivDate"]</span><span>@FmtDate(_invoice.DeliveryDate)</span></div>
+                                <div class="info-item"><span class="info-label">@L["invoice.currency"]</span><span>@_invoice.CurrencyCode</span></div>
+                                <div class="info-item"><span class="info-label">@L["invoice.orderNo"]</span><span>@NullSafe(_invoice.OrderNumber)</span></div>
+                                <div class="info-item"><span class="info-label">@L["invoice.delivNote"]</span><span>@NullSafe(_invoice.DeliveryNote)</span></div>
+                                <div class="info-item"><span class="info-label">@L["invoice.custNo"]</span><span>@NullSafe(_invoice.CustomerNumber)</span></div>
+                            </div>
+                        </div>
+
+                        <div class="party-grid">
+                            @RenderParty(_invoice.Seller,         L["invoice.seller"])
+                            @RenderParty(_invoice.Buyer,          L["invoice.buyer"])
+                            @if (_invoice.DeliveryParty is not null)
+                            { @RenderParty(_invoice.DeliveryParty, L["invoice.delivery"]) }
+                            @if (_invoice.Invoicee is not null)
+                            { @RenderParty(_invoice.Invoicee,      L["invoice.invoicee"]) }
+                        </div>
+
+                        @if (_invoice.Lines.Any())
+                        {
+                            <div class="edi-card">
+                                <div class="edi-card-header">@L["invoice.positions"]</div>
+                                <div class="table-responsive">
+                                    <table class="table table-sm edi-table mb-0">
+                                        <thead>
+                                            <tr>
+                                                <th>@L["invoice.pos"]</th>
+                                                <th>@L["invoice.gtin"]</th>
+                                                <th>@L["invoice.description"]</th>
+                                                <th class="text-end">@L["invoice.quantity"]</th>
+                                                <th class="text-end">@L["invoice.unitPrice"]</th>
+                                                <th class="text-end">@L["invoice.total"]</th>
+                                                <th class="text-end">@L["invoice.tax"] %</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            @foreach (var ln in _invoice.Lines)
+                                            {
+                                                <tr>
+                                                    <td>@ln.LineId</td>
+                                                    <td style="font-size:.76rem;color:#80bed7">@ln.Gtin</td>
+                                                    <td>@ln.Description</td>
+                                                    <td class="text-end">@ln.Quantity.ToString("N3") @ln.UnitCode</td>
+                                                    <td class="text-end">@ln.UnitPrice.ToString("N2")</td>
+                                                    <td class="text-end">@ln.LineTotal.ToString("N2")</td>
+                                                    <td class="text-end">@ln.TaxPercent.ToString("N1")</td>
+                                                </tr>
+                                            }
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        }
+
+                        <div class="two-col">
+                            @if (_invoice.TaxLines.Any())
+                            {
+                                <div class="edi-card">
+                                    <div class="edi-card-header">@L["invoice.taxTitle"]</div>
+                                    <div class="table-responsive">
+                                        <table class="table table-sm edi-table mb-0">
+                                            <thead>
+                                                <tr>
+                                                    <th>@L["invoice.taxRate"]</th>
+                                                    <th class="text-end">@L["invoice.taxBasis"]</th>
+                                                    <th class="text-end">@L["invoice.taxAmount"]</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                @foreach (var t in _invoice.TaxLines)
+                                                {
+                                                    <tr>
+                                                        <td>@t.TaxPercent.ToString("N1") %</td>
+                                                        <td class="text-end">@t.TaxableAmount.ToString("N2") @_invoice.CurrencyCode</td>
+                                                        <td class="text-end">@t.TaxAmount.ToString("N2") @_invoice.CurrencyCode</td>
+                                                    </tr>
+                                                }
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            }
+                            <div class="edi-card">
+                                <div class="edi-card-header">@L["invoice.totalsTitle"]</div>
+                                <table class="table table-sm edi-table mb-0">
+                                    <tbody>
+                                        <tr>
+                                            <td>@L["invoice.lineItems"]</td>
+                                            <td class="text-end">@_invoice.Totals.LineItemsTotal.ToString("N2") @_invoice.CurrencyCode</td>
+                                        </tr>
+                                        <tr>
+                                            <td>@L["invoice.taxTotal"]</td>
+                                            <td class="text-end">@_invoice.Totals.TaxAmount.ToString("N2") @_invoice.CurrencyCode</td>
+                                        </tr>
+                                        <tr style="font-weight:600">
+                                            <td>@L["invoice.payable"]</td>
+                                            <td class="text-end">@_invoice.Totals.TotalAmount.ToString("N2") @_invoice.CurrencyCode</td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
                         </div>
                     }
+                }
+                else
+                {
+                    @* ── Segment view ── *@
                     <div class="edi-card">
-                        <div class="edi-card-header">@L["invoice.totalsTitle"]</div>
-                        <table class="table table-sm edi-table mb-0">
-                            <tbody>
-                                <tr>
-                                    <td>@L["invoice.lineItems"]</td>
-                                    <td class="text-end">@_invoice.Totals.LineItemsTotal.ToString("N2") @_invoice.CurrencyCode</td>
-                                </tr>
-                                <tr>
-                                    <td>@L["invoice.taxTotal"]</td>
-                                    <td class="text-end">@_invoice.Totals.TaxAmount.ToString("N2") @_invoice.CurrencyCode</td>
-                                </tr>
-                                <tr style="font-weight:600">
-                                    <td>@L["invoice.payable"]</td>
-                                    <td class="text-end">@_invoice.Totals.TotalAmount.ToString("N2") @_invoice.CurrencyCode</td>
-                                </tr>
-                            </tbody>
-                        </table>
+                        <div class="edi-card-header">@L["segments.tab"] — @_interchange!.AllSegments.Count Segmente</div>
+                        <div class="p-2 seg-list">
+                            @{
+                                var issuesByLine = _issues!
+                                    .Where(i => i.LineNumber > 0)
+                                    .GroupBy(i => i.LineNumber)
+                                    .ToDictionary(g => g.Key, g => g.Max(i => i.Severity));
+                            }
+                            @foreach (var seg in _interchange!.AllSegments)
+                            {
+                                var hasSev   = issuesByLine.TryGetValue(seg.LineNumber, out var sev);
+                                var rowClass = hasSev ? (sev == Severity.Error ? "seg-has-error" : "seg-has-warn") : "";
+                                var isExpanded = _expandedSegs.Contains(seg.SegmentIndex);
+                                <div class="seg-row @rowClass" @onclick="() => ToggleSeg(seg.SegmentIndex)">
+                                    <span class="seg-idx">@seg.LineNumber</span>
+                                    <span class="seg-tag @SegTagClass(seg.Tag)">@seg.Tag</span>
+                                    @if (!isExpanded)
+                                    {
+                                        <span class="seg-content">@SegContent(seg)</span>
+                                    }
+                                    @if (hasSev)
+                                    {
+                                        <span style="font-size:.72rem;margin-left:auto;flex-shrink:0;color:@(sev==Severity.Error ? "#dc3545" : "#f0ad4e")">
+                                            @(sev == Severity.Error ? "✕" : "▲")
+                                        </span>
+                                    }
+                                </div>
+                                @if (isExpanded)
+                                {
+                                    <div class="seg-expand-panel">
+                                        @for (int ei = 1; ei < seg.Elements.Length; ei++)
+                                        {
+                                            var comps = seg.Elements[ei];
+                                            <div class="seg-elem-row">
+                                                <span class="seg-de-idx">DE@(ei)</span>
+                                                @if (comps.Length == 1)
+                                                {
+                                                    <span class="seg-de-val">@comps[0]</span>
+                                                }
+                                                else
+                                                {
+                                                    <span class="seg-de-val">@string.Join("  ", comps.Select((c, i) => $"C{i + 1}: {c}"))</span>
+                                                }
+                                            </div>
+                                        }
+                                    </div>
+                                }
+                            }
+                        </div>
                     </div>
-                </div>
+                }
             }
         }
     </main>
@@ -344,21 +530,29 @@
 @code {
     enum AppState { Upload, Processing, Done }
 
-    AppState              _state            = AppState.Upload;
-    string                _theme            = "";
+    AppState               _state            = AppState.Upload;
+    string                 _theme            = "";
     List<ValidationIssue>? _issues;
-    InvoiceData?          _invoice;
-    string?               _parseError;
-    string                _fileName         = "";
-    string                _messageType      = "";
+    InvoiceData?           _invoice;
+    EdifactInterchange?    _interchange;
+    string?                _parseError;
+    string                 _fileName         = "";
+    string                 _messageType      = "";
+    // Result view state
+    string                 _resultTab        = "report";
+    HashSet<int>           _expandedSegs     = new();
+    // Batch mode
+    bool                   _isBatch          = false;
+    List<BatchResult>?     _batchResults;
+    int?                   _expandedBatch;
 
     // GLN selection
     string _selectedGroup    = "";
     string _selectedEntryKey = "";
 
-    IEnumerable<string>     Groups          => GlnStore.Entries.Select(e => e.Group).Distinct();
-    IEnumerable<GlnEntry>   FilteredEntries => GlnStore.Entries.Where(e => e.Group == _selectedGroup);
-    GlnEntry?               SelectedEntry   => GlnStore.Entries.FirstOrDefault(e => GlnKey(e) == _selectedEntryKey);
+    IEnumerable<string>   Groups          => GlnStore.Entries.Select(e => e.Group).Distinct();
+    IEnumerable<GlnEntry> FilteredEntries => GlnStore.Entries.Where(e => e.Group == _selectedGroup);
+    GlnEntry?             SelectedEntry   => GlnStore.Entries.FirstOrDefault(e => GlnKey(e) == _selectedEntryKey);
 
     static string GlnKey(GlnEntry e) => $"{e.Group}|{e.FilNr}";
 
@@ -378,6 +572,13 @@
         await GlnStore.InitAsync();
         _theme = await JS.InvokeAsync<string?>("ls.get", "theme") ?? "";
     }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (_state == AppState.Upload)
+            await JS.InvokeVoidAsync("initDropZone", "edi-upload-zone", "edi-file-input");
+    }
+
     void Refresh() => StateHasChanged();
     async Task ToggleTheme()
     {
@@ -387,95 +588,203 @@
 
     void Reset()
     {
-        _state       = AppState.Upload;
-        _issues      = null;
-        _invoice     = null;
-        _parseError  = null;
-        _messageType = "";
+        _state         = AppState.Upload;
+        _issues        = null;
+        _invoice       = null;
+        _interchange   = null;
+        _parseError    = null;
+        _messageType   = "";
+        _resultTab     = "report";
+        _isBatch       = false;
+        _batchResults  = null;
+        _expandedBatch = null;
+        _expandedSegs.Clear();
     }
 
     async Task OnFileSelected(InputFileChangeEventArgs e)
     {
+        var files = e.GetMultipleFiles(20).ToList();
+        if (files.Count == 0) return;
+
         _parseError = null;
-        _fileName   = e.File.Name;
 
         // Datei vollständig lesen BEVOR StateHasChanged() das InputFile aus dem DOM entfernt
-        string text;
-        try
+        var fileData = new List<(string Name, string Text)>();
+        foreach (var file in files)
         {
-            using var stream = e.File.OpenReadStream(maxAllowedSize: 10 * 1024 * 1024);
-            using var reader = new System.IO.StreamReader(stream, System.Text.Encoding.Latin1);
-            text = await reader.ReadToEndAsync();
-        }
-        catch (Exception ex)
-        {
-            _parseError = ex.Message;
-            return;
+            try
+            {
+                using var stream = file.OpenReadStream(maxAllowedSize: 10 * 1024 * 1024);
+                using var reader = new System.IO.StreamReader(stream, System.Text.Encoding.Latin1);
+                fileData.Add((file.Name, await reader.ReadToEndAsync()));
+            }
+            catch (Exception ex)
+            {
+                if (files.Count == 1) { _parseError = ex.Message; return; }
+                // batch: skip unreadable files silently
+            }
         }
 
-        // Erst jetzt State wechseln (InputFile wird aus DOM entfernt)
+        if (fileData.Count == 0) return;
+
         _state = AppState.Processing;
         StateHasChanged();
 
-        try
+        if (fileData.Count == 1)
         {
-            var interchange = EdifactParser.Parse(text);
-            _messageType = interchange.Messages.FirstOrDefault()?.MessageType ?? "";
+            _fileName = fileData[0].Name;
+            var text  = fileData[0].Text;
 
-            if (_messageType == "ORDRSP")
+            // Prüfen ob die Datei mehrere Interchanges enthält
+            List<EdifactInterchange> allIc;
+            try { allIc = EdifactParser.ParseAll(text); }
+            catch (Exception ex) { _parseError = ex.Message; _state = AppState.Upload; return; }
+
+            if (allIc.Count > 1)
             {
-                _issues  = OrdrspV.Validate(interchange);
-                _invoice = null;
-            }
-            else if (_messageType == "DESADV")
-            {
-                _issues  = DesadvV.Validate(interchange);
-                _invoice = null;
-            }
-            else
-            {
-                _issues = Validator.Validate(interchange);
-                if (interchange.Messages.Any())
+                // Mehrere Interchanges → Batch-Ansicht
+                _isBatch      = true;
+                _batchResults = new();
+                _messageType  = "";
+                _invoice      = null;
+                _issues       = new();
+                _interchange  = null;
+
+                foreach (var ic in allIc)
                 {
-                    try { _invoice = InvoiceMapper.Map(interchange.Messages[0], interchange.Delimiters); }
-                    catch { /* Mapping-Fehler ignorieren */ }
+                    try
+                    {
+                        var msgType = ic.Messages.FirstOrDefault()?.MessageType ?? "";
+                        List<ValidationIssue> issues = msgType switch
+                        {
+                            "ORDRSP" => OrdrspV.Validate(ic),
+                            "DESADV" => DesadvV.Validate(ic),
+                            "INVRPT" => InvrptV.Validate(ic),
+                            _        => Validator.Validate(ic),
+                        };
+                        var label = $"{_fileName} [{ic.Unb?.El(5) ?? msgType}]";
+                        _batchResults.Add(new BatchResult(label, msgType, issues, ic));
+                        await GlnStore.RecordValidationAsync(issues);
+                    }
+                    catch { /* skip malformed interchange */ }
                 }
+                _state = AppState.Done;
+                return;
+            }
+
+            _isBatch = false;
+
+            try
+            {
+                _interchange = allIc[0];
+                _messageType = _interchange.Messages.FirstOrDefault()?.MessageType ?? "";
+
+                if (_messageType == "ORDRSP")
+                {
+                    _issues  = OrdrspV.Validate(_interchange);
+                    _invoice = null;
+                }
+                else if (_messageType == "DESADV")
+                {
+                    _issues  = DesadvV.Validate(_interchange);
+                    _invoice = null;
+                }
+                else if (_messageType == "INVRPT")
+                {
+                    _issues  = InvrptV.Validate(_interchange);
+                    _invoice = null;
+                }
+                else
+                {
+                    _issues = Validator.Validate(_interchange);
+                    if (_interchange.Messages.Any())
+                    {
+                        try { _invoice = InvoiceMapper.Map(_interchange.Messages[0], _interchange.Delimiters); }
+                        catch { /* Mapping-Fehler ignorieren */ }
+                    }
+                }
+
+                _state = AppState.Done;
+
+                var seller     = _invoice?.Seller;
+                var sellerName = !string.IsNullOrWhiteSpace(seller?.Name) ? seller.Name : null;
+                var sellerGln  = seller?.Gln ?? "";
+                var sellerLabel = sellerName ?? (!string.IsNullOrWhiteSpace(sellerGln) ? sellerGln : null);
+
+                await GlnStore.RecordValidationAsync(_issues, sellerLabel);
+                await History.AddAsync(new ValidationRecord
+                {
+                    Timestamp    = DateTime.Now.ToString("dd.MM.yyyy HH:mm:ss"),
+                    FileName     = _fileName,
+                    SellerName   = sellerName   ?? "",
+                    SellerGln    = sellerGln,
+                    IsTest       = _issues.Any(i => i.Code == "WARN_001"),
+                    IsValid      = ErrorCount == 0,
+                    ErrorCount   = ErrorCount,
+                    WarningCount = WarnCount,
+                    Issues       = _issues.Select(i => new IssueRecord
+                    {
+                        Severity        = i.Severity.ToString(),
+                        Code            = i.Code,
+                        SegmentTag      = i.SegmentTag,
+                        LineNumber      = i.LineNumber,
+                        ElementPosition = i.ElementPosition,
+                        MessageKey      = i.MessageKey,
+                    }).ToList(),
+                });
+            }
+            catch (Exception ex) { _parseError = ex.Message; _state = AppState.Upload; }
+        }
+        else
+        {
+            // ── Batch mode ──
+            _isBatch      = true;
+            _batchResults = new();
+            _messageType  = "";
+            _invoice      = null;
+            _issues       = new();
+            _interchange  = null;
+
+            foreach (var (name, text) in fileData)
+            {
+                try
+                {
+                    var ic      = EdifactParser.Parse(text);
+                    var msgType = ic.Messages.FirstOrDefault()?.MessageType ?? "";
+                    List<ValidationIssue> issues = msgType switch
+                    {
+                        "ORDRSP" => OrdrspV.Validate(ic),
+                        "DESADV" => DesadvV.Validate(ic),
+                        "INVRPT" => InvrptV.Validate(ic),
+                        _        => Validator.Validate(ic),
+                    };
+
+                    _batchResults.Add(new BatchResult(name, msgType, issues, ic));
+
+                    await GlnStore.RecordValidationAsync(issues);
+                    await History.AddAsync(new ValidationRecord
+                    {
+                        Timestamp    = DateTime.Now.ToString("dd.MM.yyyy HH:mm:ss"),
+                        FileName     = name,
+                        IsValid      = issues.Count(i => i.Severity == Severity.Error) == 0,
+                        ErrorCount   = issues.Count(i => i.Severity == Severity.Error),
+                        WarningCount = issues.Count(i => i.Severity == Severity.Warning),
+                        IsTest       = issues.Any(i => i.Code == "WARN_001"),
+                        Issues       = issues.Select(i => new IssueRecord
+                        {
+                            Severity        = i.Severity.ToString(),
+                            Code            = i.Code,
+                            SegmentTag      = i.SegmentTag,
+                            LineNumber      = i.LineNumber,
+                            ElementPosition = i.ElementPosition,
+                            MessageKey      = i.MessageKey,
+                        }).ToList(),
+                    });
+                }
+                catch { /* skip malformed file */ }
             }
 
             _state = AppState.Done;
-
-            var seller      = _invoice?.Seller;
-            var sellerName  = !string.IsNullOrWhiteSpace(seller?.Name) ? seller.Name : null;
-            var sellerGln   = seller?.Gln ?? "";
-            var sellerLabel = sellerName ?? (!string.IsNullOrWhiteSpace(sellerGln) ? sellerGln : null);
-
-            await GlnStore.RecordValidationAsync(_issues, sellerLabel);
-
-            await History.AddAsync(new ValidationRecord
-            {
-                Timestamp    = DateTime.Now.ToString("dd.MM.yyyy HH:mm:ss"),
-                FileName     = _fileName,
-                SellerName   = sellerName   ?? "",
-                SellerGln    = sellerGln,
-                IsTest       = _issues.Any(i => i.Code == "WARN_001"),
-                IsValid      = ErrorCount == 0,
-                ErrorCount   = ErrorCount,
-                WarningCount = WarnCount,
-                Issues       = _issues.Select(i => new IssueRecord
-                {
-                    Severity        = i.Severity.ToString(),
-                    Code            = i.Code,
-                    SegmentTag      = i.SegmentTag,
-                    LineNumber      = i.LineNumber,
-                    ElementPosition = i.ElementPosition,
-                    MessageKey      = i.MessageKey,
-                }).ToList(),
-            });
-        }
-        catch (Exception ex)
-        {
-            _parseError = ex.Message;
-            _state      = AppState.Upload;
         }
     }
 
@@ -500,7 +809,6 @@
         if (ErrorCount > 0) sb.Append($" &nbsp;| <strong>Fehler:</strong> {ErrorCount}");
         if (WarnCount  > 0) sb.Append($" &nbsp;| <strong>Warnungen:</strong> {WarnCount}");
         sb.Append("</p>");
-
         if (_issues!.Any())
         {
             sb.Append("<table><thead><tr><th>Segment</th><th>Zeile</th><th>Position</th><th>Code</th><th>Beschreibung</th></tr></thead><tbody>");
@@ -520,10 +828,68 @@
             sb.Append("<p style='color:#28a745'>✓ Keine Probleme gefunden – Datei entspricht dem Porta IT Leitfaden.</p>");
         }
         sb.Append("</body></html>");
-
         var name = $"bericht_{System.IO.Path.GetFileNameWithoutExtension(_fileName)}_{DateTime.Now:yyyyMMdd_HHmm}.html";
         await JS.InvokeVoidAsync("downloadFile", name, sb.ToString(), "text/html;charset=utf-8");
     }
+
+    async Task DownloadCsv()
+    {
+        var sb = new System.Text.StringBuilder();
+        if (_isBatch)
+        {
+            sb.AppendLine("\"Dateiname\";\"Typ\";\"Gültig\";\"Fehler\";\"Warnungen\"");
+            foreach (var r in _batchResults!)
+            {
+                var valid = r.IsValid ? "Ja" : "Nein";
+                sb.AppendLine($"\"{r.FileName}\";\"{r.MessageType}\";\"{valid}\";{r.ErrorCount};{r.WarnCount}");
+            }
+            await JS.InvokeVoidAsync("downloadFile", $"batch_{DateTime.Now:yyyyMMdd_HHmm}.csv", sb.ToString(), "text/csv;charset=utf-8");
+        }
+        else
+        {
+            sb.AppendLine("\"Schweregrad\";\"Segment\";\"Zeile\";\"Position\";\"Code\";\"Beschreibung\"");
+            foreach (var issue in _issues!)
+            {
+                var sev = issue.Severity == Severity.Error ? "Fehler" : "Warnung";
+                var desc = L[issue.MessageKey].Replace("\"", "\"\"");
+                sb.AppendLine($"\"{sev}\";\"{issue.SegmentTag}\";{issue.LineNumber};\"{issue.ElementPosition}\";\"{issue.Code}\";\"{desc}\"");
+            }
+            var name = $"bericht_{System.IO.Path.GetFileNameWithoutExtension(_fileName)}_{DateTime.Now:yyyyMMdd_HHmm}.csv";
+            await JS.InvokeVoidAsync("downloadFile", name, sb.ToString(), "text/csv;charset=utf-8");
+        }
+    }
+
+    // ── Segment view helpers ──────────────────────────────────────────────────
+
+    void ToggleSeg(int idx)
+    {
+        if (!_expandedSegs.Remove(idx)) _expandedSegs.Add(idx);
+    }
+
+    static bool IsRecommendation(string code) =>
+        code.StartsWith("WARN_") || code.StartsWith("ORDRSP_WARN_") ||
+        code.StartsWith("DESADV_WARN_") || code.StartsWith("INVRPT_WARN_");
+
+    static string SegTagClass(string tag) => tag switch
+    {
+        "UNB" or "UNZ" or "UNA"        => "tag-env",
+        "UNH" or "UNT"                  => "tag-msg",
+        "BGM"                           => "tag-bgm",
+        "DTM"                           => "tag-dtm",
+        "NAD"                           => "tag-nad",
+        "RFF"                           => "tag-rff",
+        "LIN" or "PIA" or "IMD"         => "tag-lin",
+        "QTY"                           => "tag-qty",
+        "PRI" or "MOA" or "ALC"         => "tag-pri",
+        "TAX" or "CUX"                  => "tag-tax",
+        "UNS" or "CNT"                  => "tag-uns",
+        _                               => "tag-default"
+    };
+
+    static string SegContent(EdifactSegment seg) =>
+        string.Join("+", seg.Elements.Skip(1).Select(e => string.Join(":", e)));
+
+    // ── Render helpers ────────────────────────────────────────────────────────
 
     RenderFragment RenderParty(InvoiceParty p, string title) => __builder =>
     {
@@ -550,14 +916,32 @@
 
     RenderFragment GlnRow(string segment, string desc, string expected, string? found) => __builder =>
     {
-        bool ok = !string.IsNullOrEmpty(found) && found == expected;
+        bool ok       = !string.IsNullOrEmpty(found) && found == expected;
+        bool chkFound = !string.IsNullOrEmpty(found) && GlnHelper.IsValid(found);
+        bool chkExp   = !string.IsNullOrEmpty(expected) && GlnHelper.IsValid(expected);
         <tr class="@(ok ? "" : "row-error")">
             <td>
                 <code>@segment</code>
                 <div style="font-size:.72rem;color:#80bed7;margin-top:.1rem;">@desc</div>
             </td>
-            <td><small>@(string.IsNullOrEmpty(expected) ? L["gln.notSet"] : expected)</small></td>
-            <td><small>@(string.IsNullOrEmpty(found) ? L["gln.notSet"] : found)</small></td>
+            <td>
+                <small>@(string.IsNullOrEmpty(expected) ? L["gln.notSet"] : expected)</small>
+                @if (!string.IsNullOrEmpty(expected))
+                {
+                    <span class="gln-check-badge @(chkExp ? "gln-check-ok" : "gln-check-fail")">
+                        @(chkExp ? L["gln.checkOk"] : L["gln.checkFail"])
+                    </span>
+                }
+            </td>
+            <td>
+                <small>@(string.IsNullOrEmpty(found) ? L["gln.notSet"] : found)</small>
+                @if (!string.IsNullOrEmpty(found))
+                {
+                    <span class="gln-check-badge @(chkFound ? "gln-check-ok" : "gln-check-fail")">
+                        @(chkFound ? L["gln.checkOk"] : L["gln.checkFail"])
+                    </span>
+                }
+            </td>
             <td>@(ok ? L["gln.ok"] : L["gln.mismatch"])</td>
         </tr>
     };

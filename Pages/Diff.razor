@@ -1,0 +1,278 @@
+@page "/diff"
+@inject L10n L
+@inject IJSRuntime JS
+@implements IDisposable
+
+<PageTitle>@L["app.title"] — @L["diff.subtitle"]</PageTitle>
+
+<div class="edi-app @(_theme == "dark" ? "theme-dark" : "")">
+
+    <header class="edi-header">
+        <div class="edi-brand">
+            <span class="edi-title">@L["app.title"]</span>
+            <span class="edi-subtitle">@L["diff.subtitle"]</span>
+        </div>
+        <div class="edi-controls">
+            <div class="btn-group btn-group-sm me-1">
+                @foreach (var lang in new[] { "de", "en", "cs" })
+                {
+                    <button class="btn @(L.Current == lang ? "btn-light" : "btn-outline-light")"
+                            @onclick="@(() => L.Set(lang))">@L[$"lang.{lang}"]</button>
+                }
+            </div>
+            <button class="btn btn-sm btn-outline-light" @onclick="ToggleTheme">
+                @(_theme == "dark" ? L["theme.light"] : L["theme.dark"])
+            </button>
+            <a href="/"      class="btn btn-sm btn-outline-light ms-1">⌂</a>
+            <a href="/admin" class="btn btn-sm btn-outline-light ms-1">⚙</a>
+        </div>
+    </header>
+
+    <main class="edi-main">
+
+        @* ── File upload zones ── *@
+        <div class="diff-upload-grid">
+            @* Zone A *@
+            <div class="diff-file-zone @(_interchangeA != null ? "loaded" : "")">
+                <div style="font-weight:600;margin-bottom:.5rem;color:#80bed7;">@L["diff.fileA"]</div>
+                @if (_interchangeA == null)
+                {
+                    <p style="font-size:.85rem;color:#5a8fa8;">@L["diff.choosefile"]</p>
+                }
+                else
+                {
+                    <p style="font-size:.83rem;margin:.3rem 0;"><strong>@_fileNameA</strong></p>
+                    <p style="font-size:.78rem;color:#5a8fa8;margin:0;">
+                        @_interchangeA.AllSegments.Count Segmente
+                        @if (!string.IsNullOrEmpty(_typeA))
+                        { <span class="badge bg-secondary ms-1" style="font-size:.7rem;">@_typeA</span> }
+                    </p>
+                }
+                <div style="position:relative;display:inline-block;margin-top:.75rem;">
+                    <button class="btn btn-sm btn-outline-secondary">@L["diff.choosefile"]</button>
+                    <InputFile OnChange="OnFileASelected" accept=".edi,.txt"
+                               style="position:absolute;inset:0;opacity:0;cursor:pointer;" />
+                </div>
+                @if (_errorA is not null)
+                { <p style="color:#dc3545;font-size:.8rem;margin-top:.5rem;">⚠ @_errorA</p> }
+            </div>
+
+            @* Zone B *@
+            <div class="diff-file-zone @(_interchangeB != null ? "loaded" : "")">
+                <div style="font-weight:600;margin-bottom:.5rem;color:#80bed7;">@L["diff.fileB"]</div>
+                @if (_interchangeB == null)
+                {
+                    <p style="font-size:.85rem;color:#5a8fa8;">@L["diff.choosefile"]</p>
+                }
+                else
+                {
+                    <p style="font-size:.83rem;margin:.3rem 0;"><strong>@_fileNameB</strong></p>
+                    <p style="font-size:.78rem;color:#5a8fa8;margin:0;">
+                        @_interchangeB.AllSegments.Count Segmente
+                        @if (!string.IsNullOrEmpty(_typeB))
+                        { <span class="badge bg-secondary ms-1" style="font-size:.7rem;">@_typeB</span> }
+                    </p>
+                }
+                <div style="position:relative;display:inline-block;margin-top:.75rem;">
+                    <button class="btn btn-sm btn-outline-secondary">@L["diff.choosefile"]</button>
+                    <InputFile OnChange="OnFileBSelected" accept=".edi,.txt"
+                               style="position:absolute;inset:0;opacity:0;cursor:pointer;" />
+                </div>
+                @if (_errorB is not null)
+                { <p style="color:#dc3545;font-size:.8rem;margin-top:.5rem;">⚠ @_errorB</p> }
+            </div>
+        </div>
+
+        @* ── Comparison result ── *@
+        @if (_interchangeA == null || _interchangeB == null)
+        {
+            <div class="edi-card">
+                <p class="p-3 mb-0" style="color:#888;font-size:.88rem;">@L["diff.selectboth"]</p>
+            </div>
+        }
+        else
+        {
+            var diffRows  = ComputeDiff();
+            var changes   = diffRows.Count(r => r.Kind != DiffKind.Same);
+            var displayed = (_onlyChanges ? diffRows.Where(r => r.Kind != DiffKind.Same) : diffRows).ToList();
+
+            <div class="diff-filter">
+                <input type="checkbox" id="onlyChg" @bind="_onlyChanges" />
+                <label for="onlyChg">@L["diff.onlychanges"]</label>
+                <span style="margin-left:1.25rem;color:#888;">
+                    <strong style="color:@(changes > 0 ? "#f0ad4e" : "#28a745")">@changes</strong>
+                    @L["diff.changes"] / @diffRows.Count @L["diff.total"]
+                </span>
+            </div>
+
+            @if (changes == 0)
+            {
+                <div class="edi-card">
+                    <p class="p-3 mb-0" style="color:#28a745;font-size:.88rem;">✓ @L["diff.nochanges"]</p>
+                </div>
+            }
+            else
+            {
+                <div class="edi-card" style="overflow:hidden;">
+                    <div class="edi-card-header">@L["diff.header"]: @_fileNameA ⇄ @_fileNameB</div>
+                    <div class="table-responsive">
+                        <table class="diff-table">
+                            <thead>
+                                <tr>
+                                    <th class="diff-idx">#</th>
+                                    <th class="diff-indicator"></th>
+                                    <th>@L["diff.sega"] — @_fileNameA</th>
+                                    <th>@L["diff.segb"] — @_fileNameB</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var row in displayed)
+                                {
+                                    var trClass = row.Kind switch
+                                    {
+                                        DiffKind.Modified => "diff-modified",
+                                        DiffKind.OnlyA    => "diff-only-a",
+                                        DiffKind.OnlyB    => "diff-only-b",
+                                        _                 => ""
+                                    };
+                                    var (indicator, indicatorColor) = row.Kind switch
+                                    {
+                                        DiffKind.Modified => ("~", "#f0ad4e"),
+                                        DiffKind.OnlyA    => ("−", "#dc3545"),
+                                        DiffKind.OnlyB    => ("+", "#28a745"),
+                                        _                 => ("",  "transparent")
+                                    };
+                                    <tr class="@trClass">
+                                        <td class="diff-idx">@((row.IdxA ?? row.IdxB ?? 0) + 1)</td>
+                                        <td class="diff-indicator" style="color:@indicatorColor;">@indicator</td>
+                                        <td class="diff-seg">@(row.SegA != null ? $"[{row.SegA.Tag}] {SegContent(row.SegA)}" : "")</td>
+                                        <td class="diff-seg">@(row.SegB != null ? $"[{row.SegB.Tag}] {SegContent(row.SegB)}" : "")</td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            }
+        }
+
+    </main>
+
+    <footer class="edi-footer">© porta it-service</footer>
+</div>
+
+@code {
+    string _theme = "";
+
+    EdifactInterchange? _interchangeA, _interchangeB;
+    string _fileNameA = "", _fileNameB = "";
+    string _typeA = "", _typeB = "";
+    string? _errorA, _errorB;
+    bool _onlyChanges = false;
+
+    protected override async Task OnInitializedAsync()
+    {
+        L.Changed += Refresh;
+        _theme = await JS.InvokeAsync<string?>("ls.get", "theme") ?? "";
+    }
+    void Refresh() => StateHasChanged();
+    async Task ToggleTheme()
+    {
+        _theme = _theme == "dark" ? "" : "dark";
+        await JS.InvokeVoidAsync("ls.set", "theme", _theme);
+    }
+    public void Dispose() => L.Changed -= Refresh;
+
+    async Task OnFileASelected(InputFileChangeEventArgs e)
+    {
+        _errorA = null;
+        try
+        {
+            using var stream = e.File.OpenReadStream(maxAllowedSize: 10 * 1024 * 1024);
+            using var reader = new System.IO.StreamReader(stream, System.Text.Encoding.Latin1);
+            var text = await reader.ReadToEndAsync();
+            _interchangeA = EdifactParser.Parse(text);
+            _fileNameA    = e.File.Name;
+            _typeA        = _interchangeA.Messages.FirstOrDefault()?.MessageType ?? "";
+        }
+        catch (Exception ex) { _errorA = ex.Message; }
+    }
+
+    async Task OnFileBSelected(InputFileChangeEventArgs e)
+    {
+        _errorB = null;
+        try
+        {
+            using var stream = e.File.OpenReadStream(maxAllowedSize: 10 * 1024 * 1024);
+            using var reader = new System.IO.StreamReader(stream, System.Text.Encoding.Latin1);
+            var text = await reader.ReadToEndAsync();
+            _interchangeB = EdifactParser.Parse(text);
+            _fileNameB    = e.File.Name;
+            _typeB        = _interchangeB.Messages.FirstOrDefault()?.MessageType ?? "";
+        }
+        catch (Exception ex) { _errorB = ex.Message; }
+    }
+
+    // ── Diff algorithm ────────────────────────────────────────────────────────
+
+    enum DiffKind { Same, Modified, OnlyA, OnlyB }
+    record DiffRow(int? IdxA, EdifactSegment? SegA, int? IdxB, EdifactSegment? SegB, DiffKind Kind);
+
+    List<DiffRow> ComputeDiff()
+    {
+        var a      = _interchangeA!.AllSegments;
+        var b      = _interchangeB!.AllSegments;
+        var result = new List<DiffRow>();
+        int ia = 0, ib = 0;
+        const int LOOK = 6;
+
+        while (ia < a.Count || ib < b.Count)
+        {
+            if (ia >= a.Count) { result.Add(new(null, null, ib, b[ib], DiffKind.OnlyB));  ib++; continue; }
+            if (ib >= b.Count) { result.Add(new(ia, a[ia], null, null, DiffKind.OnlyA)); ia++; continue; }
+
+            var sa = a[ia]; var sb = b[ib];
+
+            if (SegmentsEqual(sa, sb)) { result.Add(new(ia, sa, ib, sb, DiffKind.Same)); ia++; ib++; continue; }
+
+            // Look ahead for next matching tag
+            int matchInB = -1, matchInA = -1;
+            for (int k = 1; k <= LOOK && ib + k < b.Count; k++)
+                if (b[ib + k].Tag == sa.Tag) { matchInB = k; break; }
+            for (int k = 1; k <= LOOK && ia + k < a.Count; k++)
+                if (a[ia + k].Tag == sb.Tag) { matchInA = k; break; }
+
+            if (matchInB >= 0 && (matchInA < 0 || matchInB <= matchInA))
+            {
+                for (int k = 0; k < matchInB; k++) result.Add(new(null, null, ib + k, b[ib + k], DiffKind.OnlyB));
+                ib += matchInB;
+            }
+            else if (matchInA >= 0)
+            {
+                for (int k = 0; k < matchInA; k++) result.Add(new(ia + k, a[ia + k], null, null, DiffKind.OnlyA));
+                ia += matchInA;
+            }
+            else
+            {
+                result.Add(new(ia, sa, ib, sb, DiffKind.Modified));
+                ia++; ib++;
+            }
+        }
+        return result;
+    }
+
+    static bool SegmentsEqual(EdifactSegment a, EdifactSegment b)
+    {
+        if (a.Tag != b.Tag || a.Elements.Length != b.Elements.Length) return false;
+        for (int i = 0; i < a.Elements.Length; i++)
+        {
+            if (a.Elements[i].Length != b.Elements[i].Length) return false;
+            for (int j = 0; j < a.Elements[i].Length; j++)
+                if (a.Elements[i][j] != b.Elements[i][j]) return false;
+        }
+        return true;
+    }
+
+    static string SegContent(EdifactSegment seg) =>
+        string.Join("+", seg.Elements.Skip(1).Select(e => string.Join(":", e)));
+}

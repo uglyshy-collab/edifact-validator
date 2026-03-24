@@ -14,5 +14,6 @@ builder.Services.AddSingleton<HistoryService>();
 builder.Services.AddTransient<PortaValidator>();
 builder.Services.AddTransient<OrdrspValidator>();
 builder.Services.AddTransient<DesadvValidator>();
+builder.Services.AddTransient<InvrptValidator>();
 
 await builder.Build().RunAsync();

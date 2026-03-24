@@ -222,6 +222,7 @@
                         <button class="rules-subtab @(_rulesSubTab == "invoic"  ? "active" : "")" @onclick='() => _rulesSubTab = "invoic"'>INVOIC</button>
                         <button class="rules-subtab @(_rulesSubTab == "ordrsp"  ? "active" : "")" @onclick='() => _rulesSubTab = "ordrsp"'>ORDRSP</button>
                         <button class="rules-subtab @(_rulesSubTab == "desadv"  ? "active" : "")" @onclick='() => _rulesSubTab = "desadv"'>DESADV</button>
+                        <button class="rules-subtab @(_rulesSubTab == "invrpt"  ? "active" : "")" @onclick='() => _rulesSubTab = "invrpt"'>INVRPT</button>
                     </div>
                     <div style="display:flex;gap:.5rem;margin-left:auto;">
                         <button class="btn btn-sm btn-outline-secondary" @onclick="EnableAllRules">@L["admin.enableAll"]</button>
@@ -229,7 +230,7 @@
                     </div>
                 </div>
 
-                @foreach (var group in (_rulesSubTab == "ordrsp" ? OrdrspRuleGroups : _rulesSubTab == "desadv" ? DesadvRuleGroups : InvoicRuleGroups))
+                @foreach (var group in (_rulesSubTab == "ordrsp" ? OrdrspRuleGroups : _rulesSubTab == "desadv" ? DesadvRuleGroups : _rulesSubTab == "invrpt" ? InvrptRuleGroups : InvoicRuleGroups))
                 {
                     <div class="edi-card mb-3">
                         <div class="edi-card-header">@group.Key</div>
@@ -260,7 +261,7 @@
                                                 </div>
                                             </td>
                                             <td>
-                                                <select class="form-select form-select-sm" style="font-size:.75rem;"
+                                                <select class="form-select form-select-sm" style="font-size:.75rem;min-width:7.5rem;"
                                                         value="@(cfg.Override.HasValue ? cfg.Override.Value.ToString() : "")"
                                                         @onchange="e => SetSeverityOverride(ruleCode, e.Value?.ToString())">
                                                     <option value="">@L["admin.ruleDefault"]</option>
@@ -412,19 +413,40 @@
                         </div>
                     </div>
 
-                    @* Top rules (Hauptfehler) *@
-                    @if (TopRules().Any())
+                    @* Häufigste Fehler *@
+                    @if (TopErrors() is var topErr && topErr.Count > 0)
                     {
+                        var maxErr = topErr[0].Value;
                         <div class="edi-card mb-3">
-                            <div class="edi-card-header">@L["admin.statsTopRules"]</div>
+                            <div class="edi-card-header">@L["admin.statsTopErrors"]</div>
                             <div class="p-3">
-                                @{ var topRules = TopRules(); var maxCount = topRules.FirstOrDefault().Value; }
                                 <div class="stats-rule-grid">
-                                @foreach (var kv in topRules)
+                                @foreach (var kv in topErr)
                                 {
                                     <span class="stats-bar-desc" style="white-space:nowrap;" title="@kv.Key">@L[RuleMsgKey(kv.Key)]</span>
                                     <div class="stats-bar-wrap">
-                                        <div class="stats-bar" style="width:@(maxCount > 0 ? kv.Value * 100 / maxCount : 0)%"></div>
+                                        <div class="stats-bar" style="width:@(maxErr > 0 ? kv.Value * 100 / maxErr : 0)%"></div>
+                                    </div>
+                                    <span class="stats-bar-count">@kv.Value</span>
+                                }
+                                </div>
+                            </div>
+                        </div>
+                    }
+
+                    @* Häufige Empfehlungen *@
+                    @if (TopRecommendations() is var topRec && topRec.Count > 0)
+                    {
+                        var maxRec = topRec[0].Value;
+                        <div class="edi-card mb-3">
+                            <div class="edi-card-header">@L["admin.statsTopRecs"]</div>
+                            <div class="p-3">
+                                <div class="stats-rule-grid">
+                                @foreach (var kv in topRec)
+                                {
+                                    <span class="stats-bar-desc" style="white-space:nowrap;" title="@kv.Key">@L[RuleMsgKey(kv.Key)]</span>
+                                    <div class="stats-bar-wrap">
+                                        <div class="stats-bar stats-bar-warn" style="width:@(maxRec > 0 ? kv.Value * 100 / maxRec : 0)%"></div>
                                     </div>
                                     <span class="stats-bar-count">@kv.Value</span>
                                 }
@@ -583,6 +605,7 @@
     {
         L.Changed += Refresh;
         Store.Changed += Refresh;
+        L.Set("de");
         await Store.InitAsync();
         _historyCount = await History.GetCountAsync();
         _theme = await JS.InvokeAsync<string?>("ls.get", "theme") ?? "";
@@ -693,7 +716,7 @@
 
     // Rule helpers
     static Severity DefaultSeverity(string code) =>
-        code.StartsWith("WARN_") || code.StartsWith("ORDRSP_WARN_") || code.StartsWith("DESADV_WARN_")
+        code.StartsWith("WARN_") || code.StartsWith("ORDRSP_WARN_") || code.StartsWith("DESADV_WARN_") || code.StartsWith("INVRPT_WARN_")
             ? Severity.Warning : Severity.Error;
 
     static string RuleMsgKey(string code) => code switch
@@ -772,6 +795,14 @@
         ["Warnungen"]                 = new() { "DESADV_WARN_001","DESADV_WARN_002","DESADV_WARN_003" },
     };
 
+    Dictionary<string, List<string>> InvrptRuleGroups => new()
+    {
+        ["Syntax (UNB/UNZ/UNH/UNT)"] = new() { "SYN_001","SYN_002","SYN_003","SYN_004","SYN_005","SYN_005b","INVRPT_SYN_006" },
+        ["Pflichtfelder (Kopf)"]      = new() { "INVRPT_001","INVRPT_002","INVRPT_003","INVRPT_004","INVRPT_005" },
+        ["Positionsebene (LIN/SG9)"]  = new() { "INVRPT_006","INVRPT_007","INVRPT_008","INVRPT_008b","INVRPT_009","INVRPT_010" },
+        ["Warnungen"]                 = new() { "INVRPT_WARN_002","INVRPT_WARN_003" },
+    };
+
     async Task ToggleRule(string code, bool enabled)
     {
         Store.Rules[code] = (Store.Rules.TryGetValue(code, out var r) ? r : new RuleConfig { Code = code })
@@ -797,8 +828,19 @@
     async Task ResetRules() => await Store.ResetRulesAsync();
     async Task ResetStats()  => await Store.ResetStatsAsync();
 
-    List<KeyValuePair<string, int>> TopRules() =>
-        Store.Stats.RuleFrequency.OrderByDescending(kv => kv.Value).Take(8).ToList();
+    static bool IsRecommendation(string code) =>
+        code.StartsWith("WARN_") || code.StartsWith("ORDRSP_WARN_") ||
+        code.StartsWith("DESADV_WARN_") || code.StartsWith("INVRPT_WARN_");
+
+    List<KeyValuePair<string, int>> TopErrors() =>
+        Store.Stats.RuleFrequency
+            .Where(kv => !IsRecommendation(kv.Key))
+            .OrderByDescending(kv => kv.Value).Take(8).ToList();
+
+    List<KeyValuePair<string, int>> TopRecommendations() =>
+        Store.Stats.RuleFrequency
+            .Where(kv => IsRecommendation(kv.Key))
+            .OrderByDescending(kv => kv.Value).Take(8).ToList();
 
     // Mutable wrapper for editing
     class EditableEntry

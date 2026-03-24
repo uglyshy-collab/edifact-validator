@@ -7,6 +7,13 @@ public static class EdifactParser
 {
     public static EdifactInterchange Parse(string text)
     {
+        var all = ParseAll(text);
+        return all.Count == 1 ? all[0] : MergeInterchanges(all);
+    }
+
+    /// <summary>Parst einen Text mit einem oder mehreren UNB…UNZ Interchanges.</summary>
+    public static List<EdifactInterchange> ParseAll(string text)
+    {
         if (string.IsNullOrWhiteSpace(text))
             throw new FormatException("Datei ist leer.");
 
@@ -17,22 +24,52 @@ public static class EdifactParser
 
         var rawSegments = SplitIntoRawSegments(body, delimiters.SegmentTerminator, delimiters.ReleaseCharacter);
 
-        var segments = rawSegments
+        var allSegments = rawSegments
             .Select((r, i) => ParseSegment(r.Raw, i, r.LineNumber, delimiters))
             .Where(s => !string.IsNullOrWhiteSpace(s.Tag))
             .ToList();
 
-        var interchange = new EdifactInterchange
+        // Slice into UNB…UNZ blocks
+        var result  = new List<EdifactInterchange>();
+        int blockStart = 0;
+
+        for (int i = 0; i < allSegments.Count; i++)
         {
-            Delimiters  = delimiters,
-            AllSegments = segments,
-        };
+            if (allSegments[i].Tag == "UNZ" || i == allSegments.Count - 1)
+            {
+                int end = allSegments[i].Tag == "UNZ" ? i + 1 : allSegments.Count;
+                var block = allSegments.GetRange(blockStart, end - blockStart);
+                var ic = new EdifactInterchange
+                {
+                    Delimiters  = delimiters,
+                    AllSegments = block,
+                };
+                ic.Unb = block.FirstOrDefault(s => s.Tag == "UNB");
+                ic.Unz = block.FirstOrDefault(s => s.Tag == "UNZ");
+                ic.Messages.AddRange(GroupMessages(block));
+                result.Add(ic);
+                blockStart = i + 1;
+            }
+        }
 
-        interchange.Unb = segments.FirstOrDefault(s => s.Tag == "UNB");
-        interchange.Unz = segments.LastOrDefault(s => s.Tag == "UNZ");
-        interchange.Messages.AddRange(GroupMessages(segments));
+        return result.Count > 0 ? result
+            : new List<EdifactInterchange> { BuildSingle(allSegments, delimiters) };
+    }
 
-        return interchange;
+    private static EdifactInterchange BuildSingle(List<EdifactSegment> segments, EdifactDelimiters delimiters)
+    {
+        var ic = new EdifactInterchange { Delimiters = delimiters, AllSegments = segments };
+        ic.Unb = segments.FirstOrDefault(s => s.Tag == "UNB");
+        ic.Unz = segments.LastOrDefault(s => s.Tag == "UNZ");
+        ic.Messages.AddRange(GroupMessages(segments));
+        return ic;
+    }
+
+    private static EdifactInterchange MergeInterchanges(List<EdifactInterchange> interchanges)
+    {
+        // Fallback: if caller uses Parse() on a multi-interchange file, merge everything
+        var all = interchanges.SelectMany(ic => ic.AllSegments).ToList();
+        return BuildSingle(all, interchanges[0].Delimiters);
     }
 
     // ── Delimiter detection ──────────────────────────────────────────────────
