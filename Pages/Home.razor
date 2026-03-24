@@ -40,6 +40,65 @@
             <div class="upload-section">
                 <h2>@L["upload.title"]</h2>
                 <p class="subtitle">@L["upload.subtitle"]</p>
+
+                @* ── GLN branch selector ── *@
+                <div class="gln-select-panel">
+                    <div class="gln-select-header">@L["gln.title"]</div>
+                    <p class="gln-select-hint">@L["gln.subtitle"]</p>
+                    <div class="gln-selects">
+                        <div class="gln-field">
+                            <label>@L["gln.group"]</label>
+                            <select class="form-select form-select-sm" value="@_selectedGroup" @onchange="OnGroupChanged">
+                                <option value="">@L["gln.selectGroup"]</option>
+                                @foreach (var g in Groups)
+                                {
+                                    <option value="@g">@g</option>
+                                }
+                            </select>
+                        </div>
+                        <div class="gln-field">
+                            <label>@L["gln.branch"]</label>
+                            <select class="form-select form-select-sm" disabled="@string.IsNullOrEmpty(_selectedGroup)"
+                                    @bind="_selectedEntryKey">
+                                <option value="">@L["gln.selectBranch"]</option>
+                                @foreach (var e in FilteredEntries)
+                                {
+                                    <option value="@GlnKey(e)">@e.Label</option>
+                                }
+                            </select>
+                        </div>
+                    </div>
+                    @if (SelectedEntry is {} sel)
+                    {
+                        <div class="gln-preview">
+                            <span class="gln-preview-title">@L["gln.expected"]</span>
+                            <div class="gln-preview-rows">
+                                <div class="gln-preview-row">
+                                    <span class="gln-preview-label">@L["invoice.buyer"]</span>
+                                    <code>NAD+BY</code>
+                                    <span>@(string.IsNullOrEmpty(sel.GlnBy) ? L["gln.notSet"] : sel.GlnBy)</span>
+                                </div>
+                                @if (!string.IsNullOrEmpty(sel.GlnIv))
+                                {
+                                    <div class="gln-preview-row">
+                                        <span class="gln-preview-label">@L["invoice.invoicee"]</span>
+                                        <code>NAD+IV</code>
+                                        <span>@sel.GlnIv</span>
+                                    </div>
+                                }
+                                @if (!string.IsNullOrEmpty(sel.GlnDp))
+                                {
+                                    <div class="gln-preview-row">
+                                        <span class="gln-preview-label">@L["invoice.delivery"]</span>
+                                        <code>NAD+DP</code>
+                                        <span>@sel.GlnDp</span>
+                                    </div>
+                                }
+                            </div>
+                        </div>
+                    }
+                </div>
+
                 <div class="upload-btn-wrap">
                     <div class="upload-btn">
                         <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" fill="currentColor" viewBox="0 0 16 16">
@@ -111,6 +170,37 @@
                             </tbody>
                         </table>
                     </div>
+                }
+            </div>
+
+            @* ── GLN comparison ── *@
+            <div class="edi-card">
+                <div class="edi-card-header">@L["gln.comparison"]</div>
+                @if (SelectedEntry is {} glnSel)
+                {
+                    <div class="table-responsive">
+                        <table class="table table-sm edi-table mb-0">
+                            <thead>
+                                <tr>
+                                    <th>@L["gln.segment"]</th>
+                                    <th>@L["gln.expectedCol"]</th>
+                                    <th>@L["gln.found"]</th>
+                                    <th>@L["gln.result"]</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @GlnRow("NAD+BY", glnSel.GlnBy, _invoice?.Buyer?.Gln)
+                                @if (!string.IsNullOrEmpty(glnSel.GlnIv))
+                                { @GlnRow("NAD+IV", glnSel.GlnIv, _invoice?.Invoicee?.Gln) }
+                                @if (!string.IsNullOrEmpty(glnSel.GlnDp))
+                                { @GlnRow("NAD+DP", glnSel.GlnDp, _invoice?.DeliveryParty?.Gln) }
+                            </tbody>
+                        </table>
+                    </div>
+                }
+                else
+                {
+                    <p class="p-3 mb-0" style="font-size:.88rem;color:#888;">@L["gln.noMatch"]</p>
                 }
             </div>
 
@@ -242,11 +332,27 @@
 @code {
     enum AppState { Upload, Processing, Done }
 
-    AppState              _state      = AppState.Upload;
-    string                _theme      = "";
+    AppState              _state            = AppState.Upload;
+    string                _theme            = "";
     List<ValidationIssue>? _issues;
     InvoiceData?          _invoice;
     string?               _parseError;
+
+    // GLN selection
+    string _selectedGroup    = "";
+    string _selectedEntryKey = "";
+
+    IEnumerable<string>     Groups          => GlnDatabase.All.Select(e => e.Group).Distinct();
+    IEnumerable<GlnEntry>   FilteredEntries => GlnDatabase.All.Where(e => e.Group == _selectedGroup);
+    GlnEntry?               SelectedEntry   => GlnDatabase.All.FirstOrDefault(e => GlnKey(e) == _selectedEntryKey);
+
+    static string GlnKey(GlnEntry e) => $"{e.Group}|{e.FilNr}";
+
+    void OnGroupChanged(ChangeEventArgs ev)
+    {
+        _selectedGroup    = ev.Value?.ToString() ?? "";
+        _selectedEntryKey = "";
+    }
 
     int  ErrorCount => _issues?.Count(i => i.Severity == Severity.Error)   ?? 0;
     int  WarnCount  => _issues?.Count(i => i.Severity == Severity.Warning) ?? 0;
@@ -327,6 +433,17 @@
                 { <div><span class="info-label">@L["invoice.taxNo"]</span> @p.TaxNumber</div> }
             </div>
         </div>
+    };
+
+    RenderFragment GlnRow(string segment, string expected, string? found) => __builder =>
+    {
+        bool ok = !string.IsNullOrEmpty(found) && found == expected;
+        <tr class="@(ok ? "" : "row-error")">
+            <td><code>@segment</code></td>
+            <td><small>@(string.IsNullOrEmpty(expected) ? L["gln.notSet"] : expected)</small></td>
+            <td><small>@(string.IsNullOrEmpty(found) ? L["gln.notSet"] : found)</small></td>
+            <td>@(ok ? L["gln.ok"] : L["gln.mismatch"])</td>
+        </tr>
     };
 
     static string FmtDate(DateOnly d) =>

@@ -162,6 +162,7 @@ a:hover { color: #6a9dd3; }
 .upload-btn-wrap {
     position: relative;
     display: inline-block;
+    margin-top: 3rem;
 }
 
 .upload-input-overlay {
@@ -383,6 +384,64 @@ a:hover { color: #6a9dd3; }
 .theme-dark .edi-alert     { background: #2a1515; border-color: #dc3545; color: #f5c2c7; }
 .theme-dark .btn-back      { border-color: rgba(128,190,215,.4); color: #80bed7; }
 .theme-dark .btn-back:hover { background: rgba(128,190,215,.08); }
+
+/* ── GLN selection ── */
+.gln-selects {
+    display: inline-flex;
+    gap: 1.5rem;
+    flex-wrap: wrap;
+    justify-content: center;
+}
+
+.gln-field {
+    display: flex;
+    flex-direction: column;
+    text-align: left;
+}
+
+.gln-field select {
+    width: auto;
+    min-width: 160px;
+}
+
+.gln-preview {
+    margin-top: 1.25rem;
+    margin-left: 2rem;
+    display: inline-block;
+    text-align: left;
+    background: rgba(128,190,215,.08);
+    border: 1px solid rgba(128,190,215,.25);
+    border-radius: 6px;
+    padding: .5rem 1rem;
+}
+
+.gln-preview-title {
+    display: block;
+    font-size: .75rem;
+    color: #80bed7;
+    text-transform: uppercase;
+    letter-spacing: .05em;
+    margin-bottom: .35rem;
+}
+
+.gln-preview-rows {
+    display: flex;
+    flex-direction: column;
+    gap: .2rem;
+}
+
+.gln-preview-row {
+    display: flex;
+    gap: .75rem;
+    font-size: .83rem;
+    align-items: baseline;
+}
+
+.gln-preview-label {
+    min-width: 9rem;
+    color: #5a8fa8;
+    font-size: .78rem;
+}
 
 /* ── Responsive ── */
 @media (max-width: 768px) {
