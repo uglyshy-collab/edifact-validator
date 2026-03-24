@@ -1,5 +1,7 @@
 @page "/admin"
 @inject GlnStore Store
+@inject HistoryService History
+@inject IJSRuntime JS
 @inject L10n L
 @implements IDisposable
 
@@ -12,9 +14,14 @@
             <span class="edi-subtitle">@L["admin.title"]</span>
         </div>
         <div class="edi-controls">
-            <a href="/" class="btn btn-sm btn-outline-light me-2">← @L["admin.backToApp"]</a>
+            <a href="/" class="btn btn-sm btn-outline-light">← @L["admin.backToApp"]</a>
+            <button class="btn btn-sm btn-outline-light" @onclick="ToggleTheme">
+                @(_theme == "dark" ? L["theme.light"] : L["theme.dark"])
+            </button>
             @if (Store.IsAuthenticated)
             {
+                <span class="edi-controls-sep"></span>
+                <button class="btn btn-sm btn-outline-light" @onclick="() => _showCredForm = !_showCredForm">⚙ @L["admin.changePw"]</button>
                 <button class="btn btn-sm btn-outline-light" @onclick="Store.Logout">@L["admin.logout"]</button>
             }
         </div>
@@ -41,13 +48,17 @@
                         }
                         <div class="mb-3">
                             <label class="form-label admin-label">@L["admin.user"]</label>
-                            <input class="form-control form-control-sm admin-input" @bind="_loginUser"
+                            <input class="form-control form-control-sm admin-input"
+                                   value="@_loginUser"
+                                   @oninput="e => _loginUser = e.Value?.ToString() ?? string.Empty"
                                    @onkeyup="OnLoginKey" placeholder="admin" />
                         </div>
                         <div class="mb-3">
                             <label class="form-label admin-label">@L["admin.password"]</label>
                             <input type="password" class="form-control form-control-sm admin-input"
-                                   @bind="_loginPass" @onkeyup="OnLoginKey" />
+                                   value="@_loginPass"
+                                   @oninput="e => _loginPass = e.Value?.ToString() ?? string.Empty"
+                                   @onkeyup="OnLoginKey" />
                         </div>
                         <button class="btn btn-sm btn-primary w-100" @onclick="DoLogin">@L["admin.loginBtn"]</button>
                     </div>
@@ -56,147 +67,452 @@
         }
         else
         {
-            @* ── Toolbar ── *@
-            <div class="result-toolbar" style="justify-content:space-between;flex-wrap:wrap;gap:.5rem;">
-                <div style="display:flex;gap:.5rem;flex-wrap:wrap;">
+            @* ── Tabs ── *@
+            <div class="admin-tabs">
+                <button class="admin-tab @(_activeTab == "gln"     ? "active" : "")" @onclick='() => _activeTab = "gln"'>@L["admin.tabGln"]</button>
+                <button class="admin-tab @(_activeTab == "rules"   ? "active" : "")" @onclick='() => _activeTab = "rules"'>@L["admin.tabRules"]</button>
+                <button class="admin-tab @(_activeTab == "stats"   ? "active" : "")" @onclick='() => _activeTab = "stats"'>@L["admin.tabStats"]</button>
+                <button class="admin-tab @(_activeTab == "history" ? "active" : "")" @onclick="OpenHistory">@L["admin.tabHistory"] @(_historyCount > 0 ? $"({_historyCount})" : "")</button>
+            </div>
+
+            @if (_activeTab == "gln")
+            {
+                @* ── Toolbar ── *@
+                <div class="result-toolbar admin-toolbar">
                     <input class="form-control form-control-sm admin-search" placeholder="@L["admin.search"]"
                            @bind="_search" @bind:event="oninput" />
-                    <select class="form-select form-select-sm" style="width:auto;"
+                    <select class="form-select form-select-sm admin-filter"
                             @bind="_filterGroup">
                         <option value="">@L["admin.allGroups"]</option>
                         @foreach (var g in Groups)
                         { <option value="@g">@g</option> }
                     </select>
-                </div>
-                <div style="display:flex;gap:.5rem;">
+                    <div class="admin-toolbar-sep"></div>
                     <button class="btn btn-sm btn-success" @onclick="NewEntry">+ @L["admin.add"]</button>
                     <button class="btn btn-sm btn-outline-secondary" @onclick="ShowResetConfirm">↺ @L["admin.reset"]</button>
-                    <button class="btn btn-sm btn-outline-secondary" @onclick="() => _showCredForm = true">⚙ @L["admin.changePw"]</button>
                 </div>
-            </div>
 
-            @* ── Reset confirmation ── *@
-            @if (_confirmReset)
-            {
-                <div class="edi-alert" style="display:flex;align-items:center;gap:1rem;">
-                    <span>@L["admin.resetConfirm"]</span>
-                    <button class="btn btn-sm btn-danger" @onclick="DoReset">@L["admin.resetYes"]</button>
-                    <button class="btn btn-sm btn-outline-secondary" @onclick="() => _confirmReset = false">@L["admin.cancel"]</button>
-                </div>
-            }
-
-            @* ── Password change form ── *@
-            @if (_showCredForm)
-            {
-                <div class="edi-card mb-3">
-                    <div class="edi-card-header">@L["admin.changePw"]</div>
-                    <div class="p-3" style="display:flex;gap:1rem;flex-wrap:wrap;align-items:flex-end;">
-                        <div>
-                            <label class="admin-label">@L["admin.user"]</label>
-                            <input class="form-control form-control-sm admin-input" @bind="_newUser" />
-                        </div>
-                        <div>
-                            <label class="admin-label">@L["admin.newPassword"]</label>
-                            <input type="password" class="form-control form-control-sm admin-input" @bind="_newPass" />
-                        </div>
-                        <div>
-                            <label class="admin-label">@L["admin.confirmPassword"]</label>
-                            <input type="password" class="form-control form-control-sm admin-input" @bind="_newPass2" />
-                        </div>
-                        <button class="btn btn-sm btn-primary" @onclick="SaveCreds">@L["admin.save"]</button>
-                        <button class="btn btn-sm btn-outline-secondary" @onclick="() => _showCredForm = false">@L["admin.cancel"]</button>
-                        @if (_credMsg is not null)
-                        { <span style="font-size:.8rem;color:#28a745;">@_credMsg</span> }
+                @* ── Reset confirmation ── *@
+                @if (_confirmReset)
+                {
+                    <div class="edi-alert" style="display:flex;align-items:center;gap:1rem;">
+                        <span>@L["admin.resetConfirm"]</span>
+                        <button class="btn btn-sm btn-danger" @onclick="DoReset">@L["admin.resetYes"]</button>
+                        <button class="btn btn-sm btn-outline-secondary" @onclick="() => _confirmReset = false">@L["admin.cancel"]</button>
                     </div>
-                </div>
-            }
+                }
 
-            @* ── Edit / Add form ── *@
-            @if (_editing is not null)
-            {
-                <div class="edi-card mb-3">
-                    <div class="edi-card-header">@(_isNew ? L["admin.add"] : L["admin.edit"])</div>
-                    <div class="p-3">
-                        <div class="admin-form-grid">
+                @* ── Password change form ── *@
+                @if (_showCredForm)
+                {
+                    <div class="edi-card mb-3">
+                        <div class="edi-card-header">@L["admin.changePw"]</div>
+                        <div class="p-3" style="display:flex;gap:1rem;flex-wrap:wrap;align-items:flex-end;">
                             <div>
-                                <label class="admin-label">@L["admin.fieldGroup"]</label>
-                                <input class="form-control form-control-sm admin-input" @bind="_editing.Group" />
+                                <label class="admin-label">@L["admin.user"]</label>
+                                <input class="form-control form-control-sm admin-input" @bind="_newUser" />
                             </div>
                             <div>
-                                <label class="admin-label">@L["admin.fieldFilNr"]</label>
-                                <input type="number" class="form-control form-control-sm admin-input" @bind="_editing.FilNr" />
+                                <label class="admin-label">@L["admin.newPassword"]</label>
+                                <input type="password" class="form-control form-control-sm admin-input" @bind="_newPass" />
                             </div>
                             <div>
-                                <label class="admin-label">@L["admin.fieldName"]</label>
-                                <input class="form-control form-control-sm admin-input" @bind="_editing.Name" />
+                                <label class="admin-label">@L["admin.confirmPassword"]</label>
+                                <input type="password" class="form-control form-control-sm admin-input" @bind="_newPass2" />
                             </div>
-                            <div>
-                                <label class="admin-label">@L["admin.fieldOrt"]</label>
-                                <input class="form-control form-control-sm admin-input" @bind="_editing.Ort" />
-                            </div>
-                            <div>
-                                <label class="admin-label">NAD+BY (@L["invoice.buyer"])</label>
-                                <input class="form-control form-control-sm admin-input font-mono" @bind="_editing.GlnBy" maxlength="13" />
-                            </div>
-                            <div>
-                                <label class="admin-label">NAD+IV (@L["invoice.invoicee"])</label>
-                                <input class="form-control form-control-sm admin-input font-mono" @bind="_editing.GlnIv" maxlength="13" />
-                            </div>
-                            <div>
-                                <label class="admin-label">NAD+DP (@L["invoice.delivery"])</label>
-                                <input class="form-control form-control-sm admin-input font-mono" @bind="_editing.GlnDp" maxlength="13" />
-                            </div>
-                        </div>
-                        @if (_editError is not null)
-                        { <div class="edi-alert mt-2">@_editError</div> }
-                        <div class="mt-3" style="display:flex;gap:.5rem;">
-                            <button class="btn btn-sm btn-primary" @onclick="SaveEntry">@L["admin.save"]</button>
-                            <button class="btn btn-sm btn-outline-secondary" @onclick="CancelEdit">@L["admin.cancel"]</button>
+                            <button class="btn btn-sm btn-primary" @onclick="SaveCreds">@L["admin.save"]</button>
+                            <button class="btn btn-sm btn-outline-secondary" @onclick="() => _showCredForm = false">@L["admin.cancel"]</button>
+                            @if (_credMsg is not null)
+                            { <span style="font-size:.8rem;color:#28a745;">@_credMsg</span> }
                         </div>
                     </div>
-                </div>
-            }
+                }
 
-            @* ── GLN Table ── *@
-            <div class="edi-card">
-                <div class="edi-card-header">
-                    @L["admin.entries"] (@FilteredEntries.Count())
-                </div>
-                <div class="table-responsive">
-                    <table class="table table-sm edi-table mb-0">
-                        <thead>
-                            <tr>
-                                <th>@L["admin.fieldGroup"]</th>
-                                <th>@L["admin.fieldFilNr"]</th>
-                                <th>@L["admin.fieldName"]</th>
-                                <th>@L["admin.fieldOrt"]</th>
-                                <th>NAD+BY</th>
-                                <th>NAD+IV</th>
-                                <th>NAD+DP</th>
-                                <th></th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            @foreach (var e in FilteredEntries)
-                            {
+                @* ── Edit / Add form ── *@
+                @if (_editing is not null)
+                {
+                    <div class="edi-card mb-3">
+                        <div class="edi-card-header">@(_isNew ? L["admin.add"] : L["admin.edit"])</div>
+                        <div class="p-3">
+                            <div class="admin-form-grid">
+                                <div>
+                                    <label class="admin-label">@L["admin.fieldGroup"]</label>
+                                    <input class="form-control form-control-sm admin-input" @bind="_editing.Group" />
+                                </div>
+                                <div>
+                                    <label class="admin-label">@L["admin.fieldFilNr"]</label>
+                                    <input type="number" class="form-control form-control-sm admin-input" @bind="_editing.FilNr" />
+                                </div>
+                                <div>
+                                    <label class="admin-label">@L["admin.fieldName"]</label>
+                                    <input class="form-control form-control-sm admin-input" @bind="_editing.Name" />
+                                </div>
+                                <div>
+                                    <label class="admin-label">@L["admin.fieldOrt"]</label>
+                                    <input class="form-control form-control-sm admin-input" @bind="_editing.Ort" />
+                                </div>
+                                <div>
+                                    <label class="admin-label">NAD+BY (@L["invoice.buyer"])</label>
+                                    <input class="form-control form-control-sm admin-input font-mono" @bind="_editing.GlnBy" maxlength="13" />
+                                </div>
+                                <div>
+                                    <label class="admin-label">NAD+IV (@L["invoice.invoicee"])</label>
+                                    <input class="form-control form-control-sm admin-input font-mono" @bind="_editing.GlnIv" maxlength="13" />
+                                </div>
+                                <div>
+                                    <label class="admin-label">NAD+DP (@L["invoice.delivery"])</label>
+                                    <input class="form-control form-control-sm admin-input font-mono" @bind="_editing.GlnDp" maxlength="13" />
+                                </div>
+                            </div>
+                            @if (_editError is not null)
+                            { <div class="edi-alert mt-2">@_editError</div> }
+                            <div class="mt-3" style="display:flex;gap:.5rem;">
+                                <button class="btn btn-sm btn-primary" @onclick="SaveEntry">@L["admin.save"]</button>
+                                <button class="btn btn-sm btn-outline-secondary" @onclick="CancelEdit">@L["admin.cancel"]</button>
+                            </div>
+                        </div>
+                    </div>
+                }
+
+                @* ── GLN Table ── *@
+                <div class="edi-card">
+                    <div class="edi-card-header">
+                        @L["admin.entries"] (@FilteredEntries.Count())
+                    </div>
+                    <div class="table-responsive">
+                        <table class="table table-sm edi-table mb-0">
+                            <thead>
                                 <tr>
-                                    <td>@e.Group</td>
-                                    <td>@e.FilNr</td>
-                                    <td>@e.Name</td>
-                                    <td>@e.Ort</td>
-                                    <td><code>@e.GlnBy</code></td>
-                                    <td><code>@e.GlnIv</code></td>
-                                    <td><code>@e.GlnDp</code></td>
-                                    <td style="white-space:nowrap;">
-                                        <button class="btn btn-xs btn-outline-primary me-1" @onclick="() => EditEntry(e)">✎</button>
-                                        <button class="btn btn-xs btn-outline-danger" @onclick="() => DeleteEntry(e)">✕</button>
-                                    </td>
+                                    <th>@L["admin.fieldGroup"]</th>
+                                    <th>@L["admin.fieldFilNr"]</th>
+                                    <th>@L["admin.fieldName"]</th>
+                                    <th>@L["admin.fieldOrt"]</th>
+                                    <th>NAD+BY</th>
+                                    <th>NAD+IV</th>
+                                    <th>NAD+DP</th>
+                                    <th></th>
                                 </tr>
-                            }
-                        </tbody>
-                    </table>
+                            </thead>
+                            <tbody>
+                                @foreach (var e in FilteredEntries)
+                                {
+                                    <tr>
+                                        <td>@e.Group</td>
+                                        <td>@e.FilNr</td>
+                                        <td>@e.Name</td>
+                                        <td>@e.Ort</td>
+                                        <td><code>@e.GlnBy</code></td>
+                                        <td><code>@e.GlnIv</code></td>
+                                        <td><code>@e.GlnDp</code></td>
+                                        <td style="white-space:nowrap;">
+                                            <button class="btn btn-xs btn-outline-primary me-1" @onclick="() => EditEntry(e)">✎</button>
+                                            <button class="btn btn-xs btn-outline-danger" @onclick="() => DeleteEntry(e)">✕</button>
+                                        </td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
                 </div>
-            </div>
+            }
+            else if (_activeTab == "rules")
+            {
+                <div class="result-toolbar admin-toolbar" style="margin-bottom:.5rem;">
+                    <div class="rules-subtabs">
+                        <button class="rules-subtab @(_rulesSubTab == "invoic"  ? "active" : "")" @onclick='() => _rulesSubTab = "invoic"'>INVOIC</button>
+                        <button class="rules-subtab @(_rulesSubTab == "ordrsp"  ? "active" : "")" @onclick='() => _rulesSubTab = "ordrsp"'>ORDRSP</button>
+                        <button class="rules-subtab @(_rulesSubTab == "desadv"  ? "active" : "")" @onclick='() => _rulesSubTab = "desadv"'>DESADV</button>
+                    </div>
+                    <div style="display:flex;gap:.5rem;margin-left:auto;">
+                        <button class="btn btn-sm btn-outline-secondary" @onclick="EnableAllRules">@L["admin.enableAll"]</button>
+                        <button class="btn btn-sm btn-outline-secondary" @onclick="ResetRules">↺ @L["admin.ruleResetAll"]</button>
+                    </div>
+                </div>
+
+                @foreach (var group in (_rulesSubTab == "ordrsp" ? OrdrspRuleGroups : _rulesSubTab == "desadv" ? DesadvRuleGroups : InvoicRuleGroups))
+                {
+                    <div class="edi-card mb-3">
+                        <div class="edi-card-header">@group.Key</div>
+                        <div class="table-responsive">
+                            <table class="table table-sm edi-table mb-0">
+                                <thead>
+                                    <tr>
+                                        <th style="width:120px">@L["admin.ruleCode"]</th>
+                                        <th>@L["admin.ruleDesc"]</th>
+                                        <th style="width:90px">@L["admin.ruleDefault"]</th>
+                                        <th style="width:80px">@L["admin.ruleEnabled"]</th>
+                                        <th style="width:120px">@L["admin.ruleSeverity"]</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var ruleCode in group.Value)
+                                    {
+                                        var cfg = Store.Rules.TryGetValue(ruleCode, out var c) ? c : new RuleConfig { Code = ruleCode };
+                                        var defSev = DefaultSeverity(ruleCode);
+                                        <tr class="@(!cfg.Enabled ? "rule-disabled" : "")">
+                                            <td><code style="font-size:.75rem;">@ruleCode</code></td>
+                                            <td style="font-size:.82rem;">@L[RuleMsgKey(ruleCode)]</td>
+                                            <td><span class="badge @(defSev == Severity.Error ? "bg-danger" : "bg-warning text-dark")" style="font-size:.7rem;">@defSev</span></td>
+                                            <td>
+                                                <div class="form-check form-switch mb-0">
+                                                    <input class="form-check-input" type="checkbox" checked="@cfg.Enabled"
+                                                           @onchange="e => ToggleRule(ruleCode, (bool)(e.Value ?? true))" />
+                                                </div>
+                                            </td>
+                                            <td>
+                                                <select class="form-select form-select-sm" style="font-size:.75rem;"
+                                                        value="@(cfg.Override.HasValue ? cfg.Override.Value.ToString() : "")"
+                                                        @onchange="e => SetSeverityOverride(ruleCode, e.Value?.ToString())">
+                                                    <option value="">@L["admin.ruleDefault"]</option>
+                                                    <option value="Error">Fehler</option>
+                                                    <option value="Warning">Warnung</option>
+                                                </select>
+                                            </td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                }
+            }
+            else if (_activeTab == "history")
+            {
+                <div class="result-toolbar admin-toolbar" style="margin-bottom:.5rem;flex-wrap:wrap;gap:.4rem;">
+                    <input class="form-control form-control-sm admin-search" style="max-width:200px;"
+                           placeholder="@L["admin.search"]" @bind="_hSearch" @bind:event="oninput" />
+                    <input type="date" class="form-control form-control-sm" style="max-width:140px;"
+                           @bind="_hDateFrom" @bind:event="oninput" />
+                    <input type="date" class="form-control form-control-sm" style="max-width:140px;"
+                           @bind="_hDateTo" @bind:event="oninput" />
+                    <label class="d-flex align-items-center gap-1" style="font-size:.82rem;white-space:nowrap;margin-left:.5rem;">
+                        <input type="checkbox" @bind="_hOnlyInvalid" /> @L["admin.historyOnlyInvalid"]
+                    </label>
+                    <label class="d-flex align-items-center gap-1" style="font-size:.82rem;white-space:nowrap;margin-left:.75rem;">
+                        <input type="checkbox" @bind="_hOnlyTest" /> @L["admin.historyOnlyTest"]
+                    </label>
+                    <div style="display:flex;gap:.4rem;margin-left:auto;">
+                        <button class="btn btn-sm btn-outline-secondary" @onclick="ExportHistoryCsv">⬇ CSV</button>
+                        <button class="btn btn-sm btn-outline-danger"    @onclick="ClearHistory">✕ @L["admin.historyClear"]</button>
+                    </div>
+                </div>
+
+                @if (_history is null)
+                {
+                    <div class="edi-spinner"><div class="spinner-border" role="status" style="width:2rem;height:2rem;"></div></div>
+                }
+                else if (!HistoryFiltered.Any())
+                {
+                    <div class="edi-card"><p class="p-3 mb-0" style="color:#888;font-size:.88rem;">@L["admin.noHistory"]</p></div>
+                }
+                else
+                {
+                    <div class="edi-card">
+                        <div class="edi-card-header">@L["admin.tabHistory"] — @HistoryFiltered.Count() @L["admin.historyEntries"]</div>
+                        <div class="table-responsive">
+                            <table class="table table-sm edi-table mb-0">
+                                <thead>
+                                    <tr>
+                                        <th style="width:140px">@L["admin.statsTimestamp"]</th>
+                                        <th>@L["admin.historyFile"]</th>
+                                        <th>@L["admin.statsSeller"]</th>
+                                        <th class="text-center">@L["admin.statsIsTest"]</th>
+                                        <th class="text-end">@L["admin.statsErrors"]</th>
+                                        <th class="text-end">@L["admin.statsWarnings"]</th>
+                                        <th>@L["admin.statsStatus"]</th>
+                                        <th style="width:30px"></th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var rec in HistoryFiltered)
+                                    {
+                                        var expanded = _expandedId == rec.Id;
+                                        <tr class="@(!rec.IsValid ? "row-error" : "")">
+                                            <td style="font-size:.78rem;">@rec.Timestamp</td>
+                                            <td style="font-size:.78rem;white-space:nowrap;">@rec.FileName</td>
+                                            <td style="font-size:.78rem;max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="@(rec.SellerName + (string.IsNullOrEmpty(rec.SellerGln) ? "" : " / " + rec.SellerGln))">
+                                                @(string.IsNullOrEmpty(rec.SellerName) ? rec.SellerGln : rec.SellerName)
+                                            </td>
+                                            <td class="text-center">@(rec.IsTest ? "🧪" : "")</td>
+                                            <td class="text-end">@(rec.ErrorCount   > 0 ? rec.ErrorCount.ToString()   : "–")</td>
+                                            <td class="text-end">@(rec.WarningCount > 0 ? rec.WarningCount.ToString() : "–")</td>
+                                            <td><span class="badge @(rec.IsValid ? "bg-success" : "bg-danger")" style="font-size:.7rem;">@L[rec.IsValid ? "result.valid" : "result.invalid"]</span></td>
+                                            <td>
+                                                @if (rec.Issues.Any())
+                                                {
+                                                    <button class="btn btn-xs btn-outline-secondary" style="padding:0 4px;font-size:.7rem;"
+                                                            @onclick="() => _expandedId = expanded ? -1 : rec.Id">
+                                                        @(expanded ? "▲" : "▼")
+                                                    </button>
+                                                }
+                                            </td>
+                                        </tr>
+                                        @if (expanded && rec.Issues.Any())
+                                        {
+                                            <tr>
+                                                <td colspan="8" style="background:#f8f8f8;padding:.5rem 1rem;">
+                                                    <table class="table table-sm mb-0" style="font-size:.76rem;">
+                                                        <thead><tr><th>Code</th><th>Segment</th><th>Zeile</th><th>Beschreibung</th></tr></thead>
+                                                        <tbody>
+                                                            @foreach (var issue in rec.Issues)
+                                                            {
+                                                                <tr class="@(issue.Severity == "Error" ? "row-error" : "row-warn")">
+                                                                    <td><code>@issue.Code</code></td>
+                                                                    <td>@issue.SegmentTag</td>
+                                                                    <td>@(issue.LineNumber > 0 ? issue.LineNumber.ToString() : "–")</td>
+                                                                    <td>@L[issue.MessageKey]</td>
+                                                                </tr>
+                                                            }
+                                                        </tbody>
+                                                    </table>
+                                                </td>
+                                            </tr>
+                                        }
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                }
+            }
+            else if (_activeTab == "stats")
+            {
+                <div class="result-toolbar admin-toolbar" style="margin-bottom:.5rem;">
+                    <span style="font-size:.85rem;color:#5a8fa8;">@L["admin.tabStats"]</span>
+                    <button class="btn btn-sm btn-outline-secondary ms-auto" @onclick="ResetStats">↺ @L["admin.statsReset"]</button>
+                </div>
+
+                @if (Store.Stats.TotalRuns == 0)
+                {
+                    <div class="edi-card"><p class="p-3 mb-0" style="color:#888;font-size:.88rem;">@L["admin.noStats"]</p></div>
+                }
+                else
+                {
+                    @* KPI Cards *@
+                    <div class="stats-cards">
+                        <div class="stats-card">
+                            <div class="stats-card-value">@Store.Stats.TotalRuns</div>
+                            <div class="stats-card-label">@L["admin.statsTotal"]</div>
+                        </div>
+                        <div class="stats-card">
+                            <div class="stats-card-value" style="color:#28a745;">@Store.Stats.TotalValid</div>
+                            <div class="stats-card-label">@L["admin.statsValid"]</div>
+                        </div>
+                        <div class="stats-card">
+                            <div class="stats-card-value" style="color:#dc3545;">@(Store.Stats.TotalRuns - Store.Stats.TotalValid)</div>
+                            <div class="stats-card-label">@L["admin.statsInvalid"]</div>
+                        </div>
+                        <div class="stats-card">
+                            <div class="stats-card-value">@(Store.Stats.TotalRuns > 0 ? $"{(Store.Stats.TotalRuns - Store.Stats.TotalValid) * 100 / Store.Stats.TotalRuns} %" : "–")</div>
+                            <div class="stats-card-label">@L["admin.statsErrorRate"]</div>
+                        </div>
+                        <div class="stats-card">
+                            <div class="stats-card-value" style="color:#f0ad4e;">@Store.Stats.TestFileCount</div>
+                            <div class="stats-card-label">@L["admin.statsTests"]</div>
+                        </div>
+                    </div>
+
+                    @* Top rules (Hauptfehler) *@
+                    @if (TopRules().Any())
+                    {
+                        <div class="edi-card mb-3">
+                            <div class="edi-card-header">@L["admin.statsTopRules"]</div>
+                            <div class="p-3">
+                                @{ var topRules = TopRules(); var maxCount = topRules.FirstOrDefault().Value; }
+                                <div class="stats-rule-grid">
+                                @foreach (var kv in topRules)
+                                {
+                                    <span class="stats-bar-desc" style="white-space:nowrap;" title="@kv.Key">@L[RuleMsgKey(kv.Key)]</span>
+                                    <div class="stats-bar-wrap">
+                                        <div class="stats-bar" style="width:@(maxCount > 0 ? kv.Value * 100 / maxCount : 0)%"></div>
+                                    </div>
+                                    <span class="stats-bar-count">@kv.Value</span>
+                                }
+                                </div>
+                            </div>
+                        </div>
+                    }
+
+                    @* Validierungen pro Tag *@
+                    @if (Store.Stats.RunsByDate.Any())
+                    {
+                        <div class="edi-card mb-3">
+                            <div class="edi-card-header">@L["admin.statsPerPeriod"]</div>
+                            <div class="p-3">
+                                @{ var byDate = Store.Stats.RunsByDate.OrderByDescending(kv => kv.Key).Take(14).ToList();
+                                   var maxDate = byDate.Any() ? byDate.Max(kv => kv.Value) : 1; }
+                                @foreach (var kv in byDate)
+                                {
+                                    <div class="stats-bar-row">
+                                        <span class="stats-bar-label" style="font-size:.75rem;">@kv.Key</span>
+                                        <div class="stats-bar-wrap">
+                                            <div class="stats-bar stats-bar-date" style="width:@(maxDate > 0 ? kv.Value * 100 / maxDate : 0)%"></div>
+                                        </div>
+                                        <span class="stats-bar-count">@kv.Value</span>
+                                    </div>
+                                }
+                            </div>
+                        </div>
+                    }
+
+                    @* Haupttester: Verkäufer *@
+                    @if (Store.Stats.SellerFrequency.Any())
+                    {
+                        <div class="edi-card mb-3">
+                            <div class="edi-card-header">@L["admin.statsTopSellers"]</div>
+                            <div class="p-3">
+                                @{ var topSellers = Store.Stats.SellerFrequency.OrderByDescending(kv => kv.Value).Take(10).ToList();
+                                   var maxSeller  = topSellers.Any() ? topSellers.Max(kv => kv.Value) : 1; }
+                                @foreach (var kv in topSellers)
+                                {
+                                    <div class="stats-bar-row">
+                                        <span class="stats-bar-label" style="font-size:.75rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="@kv.Key">@kv.Key</span>
+                                        <div class="stats-bar-wrap">
+                                            <div class="stats-bar stats-bar-seller" style="width:@(maxSeller > 0 ? kv.Value * 100 / maxSeller : 0)%"></div>
+                                        </div>
+                                        <span class="stats-bar-count">@kv.Value</span>
+                                    </div>
+                                }
+                            </div>
+                        </div>
+                    }
+
+                    @* Recent runs *@
+                    @if (Store.Stats.RecentRuns.Any())
+                    {
+                        <div class="edi-card">
+                            <div class="edi-card-header">@L["admin.statsRecentRuns"]</div>
+                            <div class="table-responsive">
+                                <table class="table table-sm edi-table mb-0">
+                                    <thead>
+                                        <tr>
+                                            <th>@L["admin.statsTimestamp"]</th>
+                                            <th>@L["admin.statsSeller"]</th>
+                                            <th class="text-end">@L["admin.statsErrors"]</th>
+                                            <th class="text-end">@L["admin.statsWarnings"]</th>
+                                            <th>@L["admin.statsStatus"]</th>
+                                            <th>@L["admin.statsIsTest"]</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        @foreach (var run in Store.Stats.RecentRuns)
+                                        {
+                                            <tr>
+                                                <td style="font-size:.82rem;">@run.Timestamp</td>
+                                                <td style="font-size:.78rem;max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="@run.SellerName">@(string.IsNullOrEmpty(run.SellerName) ? "–" : run.SellerName)</td>
+                                                <td class="text-end">@(run.ErrorCount > 0 ? run.ErrorCount.ToString() : "–")</td>
+                                                <td class="text-end">@(run.WarningCount > 0 ? run.WarningCount.ToString() : "–")</td>
+                                                <td><span class="badge @(run.IsValid ? "bg-success" : "bg-danger")" style="font-size:.7rem;">@L[run.IsValid ? "result.valid" : "result.invalid"]</span></td>
+                                                <td>@(run.IsTest ? "🧪" : "")</td>
+                                            </tr>
+                                        }
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    }
+                }
+            }
         }
 
     </main>
@@ -207,7 +523,7 @@
 @code {
     bool   _ready       = false;
     string _theme       = "";
-    string _loginUser   = "";
+    string _loginUser   = "admin";
     string _loginPass   = "";
     bool   _loginError  = false;
     string _search      = "";
@@ -220,6 +536,33 @@
     string? _credMsg = null;
     string? _editError = null;
     bool   _isNew = false;
+    string _activeTab    = "gln";
+    string _rulesSubTab  = "invoic";
+
+    // History tab
+    List<ValidationRecord>? _history;
+    int     _historyCount  = 0;
+    string  _hSearch       = "";
+    DateTime? _hDateFrom;
+    DateTime? _hDateTo;
+    bool    _hOnlyInvalid  = false;
+    bool    _hOnlyTest     = false;
+    long    _expandedId    = -1;
+
+    IEnumerable<ValidationRecord> HistoryFiltered => (_history ?? Enumerable.Empty<ValidationRecord>())
+        .Where(r =>
+            (string.IsNullOrEmpty(_hSearch)
+                || r.FileName.Contains(_hSearch, StringComparison.OrdinalIgnoreCase)
+                || r.SellerName.Contains(_hSearch, StringComparison.OrdinalIgnoreCase)
+                || r.SellerGln.Contains(_hSearch, StringComparison.OrdinalIgnoreCase))
+            && (!_hOnlyInvalid || !r.IsValid)
+            && (!_hOnlyTest    ||  r.IsTest)
+            && (_hDateFrom is null || DateTime.TryParseExact(r.Timestamp[..10], "dd.MM.yyyy",
+                    System.Globalization.CultureInfo.InvariantCulture,
+                    System.Globalization.DateTimeStyles.None, out var d) && d >= _hDateFrom.Value)
+            && (_hDateTo   is null || DateTime.TryParseExact(r.Timestamp[..10], "dd.MM.yyyy",
+                    System.Globalization.CultureInfo.InvariantCulture,
+                    System.Globalization.DateTimeStyles.None, out var d2) && d2 <= _hDateTo.Value.AddDays(1)));
 
     EditableEntry? _editing;
 
@@ -241,19 +584,47 @@
         L.Changed += Refresh;
         Store.Changed += Refresh;
         await Store.InitAsync();
+        _historyCount = await History.GetCountAsync();
+        _theme = await JS.InvokeAsync<string?>("ls.get", "theme") ?? "";
         _ready = true;
+    }
+
+    async Task ToggleTheme()
+    {
+        _theme = _theme == "dark" ? "" : "dark";
+        await JS.InvokeVoidAsync("ls.set", "theme", _theme);
+    }
+
+    async Task OpenHistory()
+    {
+        _activeTab = "history";
+        if (_history is null)
+        {
+            _history = await History.GetRecentAsync(500);
+            _historyCount = _history.Count;
+        }
+    }
+
+    async Task ExportHistoryCsv() => await History.DownloadCsvAsync(JS);
+
+    async Task ClearHistory()
+    {
+        await History.ClearAsync();
+        _history      = new();
+        _historyCount = 0;
+        _expandedId   = -1;
     }
 
     void Refresh() => StateHasChanged();
 
-    async Task DoLogin()
+    void DoLogin()
     {
-        _loginError = !await Store.LoginAsync(_loginUser, _loginPass);
+        _loginError = !Store.Login(_loginUser, _loginPass);
     }
 
-    async Task OnLoginKey(KeyboardEventArgs e)
+    void OnLoginKey(KeyboardEventArgs e)
     {
-        if (e.Key == "Enter") await DoLogin();
+        if (e.Key == "Enter") DoLogin();
     }
 
     void NewEntry()
@@ -319,6 +690,115 @@
         L.Changed -= Refresh;
         Store.Changed -= Refresh;
     }
+
+    // Rule helpers
+    static Severity DefaultSeverity(string code) =>
+        code.StartsWith("WARN_") || code.StartsWith("ORDRSP_WARN_") || code.StartsWith("DESADV_WARN_")
+            ? Severity.Warning : Severity.Error;
+
+    static string RuleMsgKey(string code) => code switch
+    {
+        "SYN_001"        => "syn.001",
+        "SYN_002"        => "syn.002",
+        "SYN_003"        => "syn.003",
+        "SYN_004"        => "syn.004",
+        "SYN_005"        => "syn.005",
+        "SYN_005b"       => "syn.005b",
+        "SYN_006"        => "syn.006",
+        "PORTA_001"      => "porta.001",
+        "PORTA_001b"     => "porta.001b",
+        "PORTA_002"      => "porta.002",
+        "PORTA_003"      => "porta.003",
+        "PORTA_004"      => "porta.004",
+        "PORTA_005"      => "porta.005",
+        "PORTA_006"      => "porta.006",
+        "PORTA_007"      => "porta.007",
+        "PORTA_008"      => "porta.008",
+        "PORTA_009"      => "porta.009",
+        "PORTA_010"      => "porta.010",
+        "PORTA_011"      => "porta.011",
+        "PORTA_012"      => "porta.012",
+        "PORTA_013"      => "porta.013",
+        "PORTA_014"      => "porta.014",
+        "PORTA_015"      => "porta.015",
+        "PORTA_016"      => "porta.016",
+        "PORTA_017"      => "porta.017",
+        "PORTA_018"      => "porta.018",
+        "PORTA_019"      => "porta.019",
+        "PORTA_019b"     => "porta.019b",
+        "PORTA_020"      => "porta.020",
+        "PORTA_020b"     => "porta.020b",
+        "PORTA_021"      => "porta.021",
+        "PORTA_021b"     => "porta.021b",
+        "PORTA_022"      => "porta.022",
+        "PORTA_023"      => "porta.023",
+        "PORTA_024"      => "porta.024",
+        "PORTA_025"      => "porta.025",
+        "PORTA_026"      => "porta.026",
+        "PORTA_027"      => "porta.027",
+        "PORTA_028"      => "porta.028",
+        "PORTA_029"      => "porta.029",
+        "PORTA_030"      => "porta.030",
+        "PORTA_031"      => "porta.031",
+        "WARN_001"       => "warn.001",
+        "WARN_002"       => "warn.002",
+        "WARN_003"       => "warn.003",
+        "WARN_004"       => "warn.004",
+        _                => code.ToLower().Replace("_", ".")
+    };
+
+    Dictionary<string, List<string>> InvoicRuleGroups => new()
+    {
+        ["Syntax (UNB/UNZ/UNH/UNT)"] = new() { "SYN_001","SYN_002","SYN_003","SYN_004","SYN_005","SYN_005b","SYN_006" },
+        ["Pflichtfelder (Kopf)"]      = new() { "PORTA_001","PORTA_001b","PORTA_002","PORTA_003","PORTA_004","PORTA_005","PORTA_006","PORTA_007","PORTA_008","PORTA_009","PORTA_010","PORTA_011","PORTA_012","PORTA_013","PORTA_014","PORTA_015","PORTA_016" },
+        ["Positionsebene (LIN)"]      = new() { "PORTA_017","PORTA_018","PORTA_019","PORTA_019b","PORTA_020","PORTA_020b","PORTA_021","PORTA_021b" },
+        ["Summen & ALC"]              = new() { "PORTA_022","PORTA_023","PORTA_024","PORTA_025","PORTA_026","PORTA_027","PORTA_028","PORTA_029","PORTA_030","PORTA_031" },
+        ["Warnungen"]                 = new() { "WARN_001","WARN_002","WARN_003","WARN_004" },
+    };
+
+    Dictionary<string, List<string>> OrdrspRuleGroups => new()
+    {
+        ["Syntax (UNB/UNZ/UNH/UNT)"] = new() { "SYN_001","SYN_002","SYN_003","SYN_004","SYN_005","SYN_005b","ORDRSP_SYN_006" },
+        ["Pflichtfelder (Kopf)"]      = new() { "ORDRSP_001","ORDRSP_002","ORDRSP_003","ORDRSP_004","ORDRSP_005","ORDRSP_006","ORDRSP_007","ORDRSP_008","ORDRSP_009","ORDRSP_010" },
+        ["Positionsebene (LIN)"]      = new() { "ORDRSP_011","ORDRSP_012","ORDRSP_013","ORDRSP_014","ORDRSP_014b","ORDRSP_015","ORDRSP_016","ORDRSP_017","ORDRSP_018" },
+        ["Warnungen"]                 = new() { "ORDRSP_WARN_001" },
+    };
+
+    Dictionary<string, List<string>> DesadvRuleGroups => new()
+    {
+        ["Syntax (UNB/UNZ/UNH/UNT)"] = new() { "SYN_001","SYN_002","SYN_003","SYN_004","SYN_005","SYN_005b","DESADV_SYN_006" },
+        ["Pflichtfelder (Kopf)"]      = new() { "DESADV_001","DESADV_002","DESADV_003","DESADV_004","DESADV_005","DESADV_006","DESADV_007","DESADV_008","DESADV_009" },
+        ["Positionsebene (LIN)"]      = new() { "DESADV_010","DESADV_011","DESADV_011b","DESADV_012","DESADV_013","DESADV_014","DESADV_016" },
+        ["Warnungen"]                 = new() { "DESADV_WARN_001","DESADV_WARN_002","DESADV_WARN_003" },
+    };
+
+    async Task ToggleRule(string code, bool enabled)
+    {
+        Store.Rules[code] = (Store.Rules.TryGetValue(code, out var r) ? r : new RuleConfig { Code = code })
+            with { Enabled = enabled };
+        await Store.SaveRulesAsync();
+    }
+
+    async Task SetSeverityOverride(string code, string? val)
+    {
+        Severity? sev = val switch { "Error" => Severity.Error, "Warning" => Severity.Warning, _ => null };
+        Store.Rules[code] = (Store.Rules.TryGetValue(code, out var r) ? r : new RuleConfig { Code = code })
+            with { Override = sev };
+        await Store.SaveRulesAsync();
+    }
+
+    async Task EnableAllRules()
+    {
+        foreach (var key in Store.Rules.Keys.ToList())
+            Store.Rules[key] = Store.Rules[key] with { Enabled = true };
+        await Store.SaveRulesAsync();
+    }
+
+    async Task ResetRules() => await Store.ResetRulesAsync();
+    async Task ResetStats()  => await Store.ResetStatsAsync();
+
+    List<KeyValuePair<string, int>> TopRules() =>
+        Store.Stats.RuleFrequency.OrderByDescending(kv => kv.Value).Take(8).ToList();
 
     // Mutable wrapper for editing
     class EditableEntry

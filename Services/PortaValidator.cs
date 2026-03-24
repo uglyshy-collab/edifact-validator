@@ -9,6 +9,9 @@ namespace EdifactValidator.Services;
 public class PortaValidator
 {
     private readonly List<ValidationIssue> _issues = new();
+    private readonly GlnStore _store;
+
+    public PortaValidator(GlnStore store) => _store = store;
 
     public List<ValidationIssue> Validate(EdifactInterchange ic)
     {
@@ -360,17 +363,25 @@ public class PortaValidator
             System.Globalization.NumberStyles.Any,
             System.Globalization.CultureInfo.InvariantCulture, out var r) ? r : 0m;
 
-    private void Err(string tag, int idx, int line, string el, string code, string key) =>
+    private void Err(string tag, int idx, int line, string el, string code, string key)
+    {
+        if (!_store.IsRuleEnabled(code)) return;
+        var sev = _store.GetSeverity(code, Severity.Error);
         _issues.Add(new ValidationIssue
         {
-            Severity = Severity.Error, SegmentTag = tag, SegmentIndex = idx,
+            Severity = sev, SegmentTag = tag, SegmentIndex = idx,
             LineNumber = line, ElementPosition = el, Code = code, MessageKey = key,
         });
+    }
 
-    private void Warn(string tag, int idx, int line, string el, string code, string key) =>
+    private void Warn(string tag, int idx, int line, string el, string code, string key)
+    {
+        if (!_store.IsRuleEnabled(code)) return;
+        var sev = _store.GetSeverity(code, Severity.Warning);
         _issues.Add(new ValidationIssue
         {
-            Severity = Severity.Warning, SegmentTag = tag, SegmentIndex = idx,
+            Severity = sev, SegmentTag = tag, SegmentIndex = idx,
             LineNumber = line, ElementPosition = el, Code = code, MessageKey = key,
         });
+    }
 }

@@ -1,7 +1,11 @@
 @page "/"
 @inject L10n L
 @inject PortaValidator Validator
+@inject OrdrspValidator OrdrspV
+@inject DesadvValidator DesadvV
 @inject GlnStore GlnStore
+@inject HistoryService History
+@inject IJSRuntime JS
 @implements IDisposable
 
 <PageTitle>@L["app.title"] — @L["app.subtitle"]</PageTitle>
@@ -122,20 +126,26 @@
         }
         else
         {
-            @* ── Toolbar ── *@
+            @* ── Toolbar + Summary ── *@
             <div class="result-toolbar">
                 <button class="btn-back" @onclick="Reset">← @L["upload.loadNew"]</button>
-            </div>
-
-            @* ── Validation summary ── *@
-            <div class="result-summary">
-                <span class="badge fs-6 @(IsValid ? "bg-success" : "bg-danger")">
-                    @L[IsValid ? "result.valid" : "result.invalid"]
-                </span>
-                @if (ErrorCount > 0)
-                { <span class="badge bg-danger">@ErrorCount @L["result.errors"]</span> }
-                @if (WarnCount > 0)
-                { <span class="badge bg-warning text-dark">@WarnCount @L["result.warnings"]</span> }
+                <div class="result-badges">
+                    @if (!string.IsNullOrEmpty(_messageType))
+                    {
+                        <span class="badge bg-secondary" style="font-size:.75rem;">@_messageType</span>
+                    }
+                    <span class="badge fs-6 @(IsValid ? "bg-success" : "bg-danger")">
+                        @L[IsValid ? "result.valid" : "result.invalid"]
+                    </span>
+                    @if (ErrorCount > 0)
+                    { <span class="badge bg-danger">@ErrorCount @L["result.errors"]</span> }
+                    @if (WarnCount > 0)
+                    { <span class="badge bg-warning text-dark">@WarnCount @L["result.warnings"]</span> }
+                </div>
+                <div class="result-actions">
+                    <button class="btn btn-sm btn-outline-secondary" @onclick="PrintReport">🖨 @L["report.print"]</button>
+                    <button class="btn btn-sm btn-outline-secondary" @onclick="DownloadReport">⬇ @L["report.download"]</button>
+                </div>
             </div>
 
             @* ── Validation report ── *@
@@ -191,11 +201,11 @@
                                 </tr>
                             </thead>
                             <tbody>
-                                @GlnRow("NAD+BY", glnSel.GlnBy, _invoice?.Buyer?.Gln)
+                                @GlnRow("NAD+BY", L["invoice.buyer"],    glnSel.GlnBy, _invoice?.Buyer?.Gln)
                                 @if (!string.IsNullOrEmpty(glnSel.GlnIv))
-                                { @GlnRow("NAD+IV", glnSel.GlnIv, _invoice?.Invoicee?.Gln) }
+                                { @GlnRow("NAD+IV", L["invoice.invoicee"], glnSel.GlnIv, _invoice?.Invoicee?.Gln) }
                                 @if (!string.IsNullOrEmpty(glnSel.GlnDp))
-                                { @GlnRow("NAD+DP", glnSel.GlnDp, _invoice?.DeliveryParty?.Gln) }
+                                { @GlnRow("NAD+DP", L["invoice.delivery"], glnSel.GlnDp, _invoice?.DeliveryParty?.Gln) }
                             </tbody>
                         </table>
                     </div>
@@ -339,6 +349,8 @@
     List<ValidationIssue>? _issues;
     InvoiceData?          _invoice;
     string?               _parseError;
+    string                _fileName         = "";
+    string                _messageType      = "";
 
     // GLN selection
     string _selectedGroup    = "";
@@ -364,21 +376,28 @@
     {
         L.Changed += Refresh;
         await GlnStore.InitAsync();
+        _theme = await JS.InvokeAsync<string?>("ls.get", "theme") ?? "";
     }
     void Refresh() => StateHasChanged();
-    void ToggleTheme() => _theme = _theme == "dark" ? "" : "dark";
+    async Task ToggleTheme()
+    {
+        _theme = _theme == "dark" ? "" : "dark";
+        await JS.InvokeVoidAsync("ls.set", "theme", _theme);
+    }
 
     void Reset()
     {
-        _state      = AppState.Upload;
-        _issues     = null;
-        _invoice    = null;
-        _parseError = null;
+        _state       = AppState.Upload;
+        _issues      = null;
+        _invoice     = null;
+        _parseError  = null;
+        _messageType = "";
     }
 
     async Task OnFileSelected(InputFileChangeEventArgs e)
     {
         _parseError = null;
+        _fileName   = e.File.Name;
 
         // Datei vollständig lesen BEVOR StateHasChanged() das InputFile aus dem DOM entfernt
         string text;
@@ -401,21 +420,109 @@
         try
         {
             var interchange = EdifactParser.Parse(text);
-            _issues = Validator.Validate(interchange);
+            _messageType = interchange.Messages.FirstOrDefault()?.MessageType ?? "";
 
-            if (interchange.Messages.Any())
+            if (_messageType == "ORDRSP")
             {
-                try { _invoice = InvoiceMapper.Map(interchange.Messages[0], interchange.Delimiters); }
-                catch { /* Mapping-Fehler ignorieren */ }
+                _issues  = OrdrspV.Validate(interchange);
+                _invoice = null;
+            }
+            else if (_messageType == "DESADV")
+            {
+                _issues  = DesadvV.Validate(interchange);
+                _invoice = null;
+            }
+            else
+            {
+                _issues = Validator.Validate(interchange);
+                if (interchange.Messages.Any())
+                {
+                    try { _invoice = InvoiceMapper.Map(interchange.Messages[0], interchange.Delimiters); }
+                    catch { /* Mapping-Fehler ignorieren */ }
+                }
             }
 
             _state = AppState.Done;
+
+            var seller      = _invoice?.Seller;
+            var sellerName  = !string.IsNullOrWhiteSpace(seller?.Name) ? seller.Name : null;
+            var sellerGln   = seller?.Gln ?? "";
+            var sellerLabel = sellerName ?? (!string.IsNullOrWhiteSpace(sellerGln) ? sellerGln : null);
+
+            await GlnStore.RecordValidationAsync(_issues, sellerLabel);
+
+            await History.AddAsync(new ValidationRecord
+            {
+                Timestamp    = DateTime.Now.ToString("dd.MM.yyyy HH:mm:ss"),
+                FileName     = _fileName,
+                SellerName   = sellerName   ?? "",
+                SellerGln    = sellerGln,
+                IsTest       = _issues.Any(i => i.Code == "WARN_001"),
+                IsValid      = ErrorCount == 0,
+                ErrorCount   = ErrorCount,
+                WarningCount = WarnCount,
+                Issues       = _issues.Select(i => new IssueRecord
+                {
+                    Severity        = i.Severity.ToString(),
+                    Code            = i.Code,
+                    SegmentTag      = i.SegmentTag,
+                    LineNumber      = i.LineNumber,
+                    ElementPosition = i.ElementPosition,
+                    MessageKey      = i.MessageKey,
+                }).ToList(),
+            });
         }
         catch (Exception ex)
         {
             _parseError = ex.Message;
             _state      = AppState.Upload;
         }
+    }
+
+    async Task PrintReport() => await JS.InvokeVoidAsync("window.print");
+
+    async Task DownloadReport()
+    {
+        var sb = new System.Text.StringBuilder();
+        sb.Append("<!DOCTYPE html><html><head><meta charset='utf-8'>");
+        sb.Append($"<title>EDI Bericht – {System.Net.WebUtility.HtmlEncode(_fileName)}</title>");
+        sb.Append("<style>body{font-family:monospace;max-width:1000px;margin:2em auto;color:#222}");
+        sb.Append("h1{color:#1a4a6e;font-size:1.2em}p{font-size:.88em}");
+        sb.Append("table{border-collapse:collapse;width:100%;margin:.8em 0}");
+        sb.Append("th,td{border:1px solid #ccc;padding:4px 8px;font-size:.8em;text-align:left}");
+        sb.Append("th{background:#ddeef5}.err{background:#fef0f0}.warn{background:#fffbe6}");
+        sb.Append(".ok{color:#28a745;font-weight:600}.bad{color:#dc3545;font-weight:600}");
+        sb.Append("</style></head><body>");
+        sb.Append("<h1>EDI Validierungsbericht — Porta IT-Service</h1>");
+        sb.Append($"<p><strong>Datei:</strong> {System.Net.WebUtility.HtmlEncode(_fileName)} &nbsp;|&nbsp; ");
+        sb.Append($"<strong>Erstellt:</strong> {DateTime.Now:dd.MM.yyyy HH:mm} &nbsp;|&nbsp; ");
+        sb.Append($"<strong>Ergebnis:</strong> <span class='{(IsValid ? "ok" : "bad")}'>{(IsValid ? "✓ Gültig" : "✗ Ungültig")}</span>");
+        if (ErrorCount > 0) sb.Append($" &nbsp;| <strong>Fehler:</strong> {ErrorCount}");
+        if (WarnCount  > 0) sb.Append($" &nbsp;| <strong>Warnungen:</strong> {WarnCount}");
+        sb.Append("</p>");
+
+        if (_issues!.Any())
+        {
+            sb.Append("<table><thead><tr><th>Segment</th><th>Zeile</th><th>Position</th><th>Code</th><th>Beschreibung</th></tr></thead><tbody>");
+            foreach (var issue in _issues!)
+            {
+                var cls = issue.Severity == Severity.Error ? "err" : "warn";
+                sb.Append($"<tr class='{cls}'><td><b>{System.Net.WebUtility.HtmlEncode(issue.SegmentTag)}</b></td>");
+                sb.Append($"<td>{(issue.LineNumber > 0 ? issue.LineNumber.ToString() : "–")}</td>");
+                sb.Append($"<td>{System.Net.WebUtility.HtmlEncode(issue.ElementPosition)}</td>");
+                sb.Append($"<td><code>{issue.Code}</code></td>");
+                sb.Append($"<td>{System.Net.WebUtility.HtmlEncode(L[issue.MessageKey])}</td></tr>");
+            }
+            sb.Append("</tbody></table>");
+        }
+        else
+        {
+            sb.Append("<p style='color:#28a745'>✓ Keine Probleme gefunden – Datei entspricht dem Porta IT Leitfaden.</p>");
+        }
+        sb.Append("</body></html>");
+
+        var name = $"bericht_{System.IO.Path.GetFileNameWithoutExtension(_fileName)}_{DateTime.Now:yyyyMMdd_HHmm}.html";
+        await JS.InvokeVoidAsync("downloadFile", name, sb.ToString(), "text/html;charset=utf-8");
     }
 
     RenderFragment RenderParty(InvoiceParty p, string title) => __builder =>
@@ -441,11 +548,14 @@
         </div>
     };
 
-    RenderFragment GlnRow(string segment, string expected, string? found) => __builder =>
+    RenderFragment GlnRow(string segment, string desc, string expected, string? found) => __builder =>
     {
         bool ok = !string.IsNullOrEmpty(found) && found == expected;
         <tr class="@(ok ? "" : "row-error")">
-            <td><code>@segment</code></td>
+            <td>
+                <code>@segment</code>
+                <div style="font-size:.72rem;color:#80bed7;margin-top:.1rem;">@desc</div>
+            </td>
             <td><small>@(string.IsNullOrEmpty(expected) ? L["gln.notSet"] : expected)</small></td>
             <td><small>@(string.IsNullOrEmpty(found) ? L["gln.notSet"] : found)</small></td>
             <td>@(ok ? L["gln.ok"] : L["gln.mismatch"])</td>
