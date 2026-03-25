@@ -11,6 +11,8 @@ html, body {
     scrollbar-color: #888888 #092638;
     scrollbar-width: thin;
 }
+/* Applied immediately via inline script before Blazor renders — prevents dark-mode flash */
+html.theme-dark, html.theme-dark body { background-color: #0f1923 !important; color: #c8dde8 !important; }
 
 h1, h2, h3, h4, h5, h6 { font-family: 'Sometype Mono', monospace; }
 
@@ -652,6 +654,11 @@ a:hover { color: #6a9dd3; }
 .sev-select-error     { background-color: #ffe5e5; border-color: #f5a0a0; color: #c0392b; font-weight:600; }
 .sev-select-warning   { background-color: #fff8dc; border-color: #f0c040; color: #8a6200; font-weight:600; }
 .sev-select-default   { background-color: #f0f0f0; color: #555; }
+.rule-row-expandable  { cursor: pointer; }
+.rule-row-expandable:hover td { filter: brightness(.96); }
+.rule-detail-row td   { padding: 0 !important; }
+.rule-detail-row.rule-row-error   .issue-detail-panel { border-left-color: #f5a0a0; }
+.rule-detail-row.rule-row-warning .issue-detail-panel { border-left-color: #f0c040; }
 
 /* ── Statistics ── */
 .stats-cards {

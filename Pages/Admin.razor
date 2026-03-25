@@ -3,6 +3,7 @@
 @inject HistoryService History
 @inject IJSRuntime JS
 @inject L10n L
+@using EdifactValidator.Services
 @implements IDisposable
 
 <PageTitle>@L.De("admin.title") — @L.De("app.title")</PageTitle>
@@ -248,21 +249,30 @@
                                 <tbody>
                                     @foreach (var ruleCode in group.Value)
                                     {
-                                        var cfg = Store.Rules.TryGetValue(ruleCode, out var c) ? c : new RuleConfig { Code = ruleCode };
-                                        var defSev = DefaultSeverity(ruleCode);
-                                        var effSev = cfg.Override ?? defSev;
-                                        var rowBg  = !cfg.Enabled ? "rule-disabled" : effSev == Severity.Error ? "rule-row-error" : effSev == Severity.Warning ? "rule-row-warning" : "";
-                                        <tr class="@rowBg">
+                                        var cfg      = Store.Rules.TryGetValue(ruleCode, out var c) ? c : new RuleConfig { Code = ruleCode };
+                                        var defSev   = DefaultSeverity(ruleCode);
+                                        var effSev   = cfg.Override ?? defSev;
+                                        var rowBg    = !cfg.Enabled ? "rule-disabled" : effSev == Severity.Error ? "rule-row-error" : effSev == Severity.Warning ? "rule-row-warning" : "";
+                                        var detail   = RuleDescriptions.Get(ruleCode);
+                                        var expanded = _expandedRules.Contains(ruleCode);
+                                        <tr class="@rowBg @(detail != null ? "rule-row-expandable" : "")"
+                                            @onclick="() => { if (detail != null) ToggleRuleDetail(ruleCode); }">
                                             <td><code style="font-size:.75rem;">@ruleCode</code></td>
-                                            <td style="font-size:.82rem;">@L[RuleMsgKey(ruleCode)]</td>
+                                            <td style="font-size:.82rem;">
+                                                @L.De(RuleMsgKey(ruleCode))
+                                                @if (detail != null)
+                                                {
+                                                    <span class="issue-info-icon">@(expanded ? "▲" : "▼")</span>
+                                                }
+                                            </td>
                                             <td><span class="badge @(defSev == Severity.Error ? "bg-danger" : "bg-warning text-dark")" style="font-size:.7rem;">@defSev</span></td>
-                                            <td>
+                                            <td @onclick:stopPropagation="true">
                                                 <div class="form-check form-switch mb-0">
                                                     <input class="form-check-input" type="checkbox" checked="@cfg.Enabled"
                                                            @onchange="e => ToggleRule(ruleCode, (bool)(e.Value ?? true))" />
                                                 </div>
                                             </td>
-                                            <td>
+                                            <td @onclick:stopPropagation="true">
                                                 <select class="form-select form-select-sm sev-select-@(cfg.Override.HasValue ? cfg.Override.Value.ToString().ToLower() : "default")" style="font-size:.75rem;min-width:7.5rem;"
                                                         value="@(cfg.Override.HasValue ? cfg.Override.Value.ToString() : "")"
                                                         @onchange="e => SetSeverityOverride(ruleCode, e.Value?.ToString())">
@@ -272,6 +282,20 @@
                                                 </select>
                                             </td>
                                         </tr>
+                                        @if (expanded && detail != null)
+                                        {
+                                            <tr class="rule-detail-row @rowBg">
+                                                <td colspan="5">
+                                                    <div class="issue-detail-panel">
+                                                        <p>@detail.Detail</p>
+                                                        @if (detail.Example != null)
+                                                        {
+                                                            <pre class="issue-example">@detail.Example</pre>
+                                                        }
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                        }
                                     }
                                 </tbody>
                             </table>
@@ -571,6 +595,7 @@
     bool   _isNew = false;
     string _activeTab    = "gln";
     string _rulesSubTab  = "invoic";
+    HashSet<string> _expandedRules = new();
 
     // History tab
     List<ValidationRecord>? _history;
@@ -833,6 +858,11 @@
         Store.Rules[code] = (Store.Rules.TryGetValue(code, out var r) ? r : new RuleConfig { Code = code })
             with { Override = sev };
         await Store.SaveRulesAsync();
+    }
+
+    void ToggleRuleDetail(string code)
+    {
+        if (!_expandedRules.Remove(code)) _expandedRules.Add(code);
     }
 
     async Task EnableAllRules()
