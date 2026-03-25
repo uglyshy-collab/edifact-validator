@@ -2,6 +2,9 @@ namespace EdifactValidator.Services;
 
 public class L10n
 {
+    /// <summary>Always returns the German string, regardless of current language. Use in Admin.razor.</summary>
+    public string De(string key) => Trans["de"].TryGetValue(key, out var v) ? v : key;
+
     private static readonly Dictionary<string, Dictionary<string, string>> Trans = new()
     {
         ["de"] = new()

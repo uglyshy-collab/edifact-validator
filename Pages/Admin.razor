@@ -5,24 +5,24 @@
 @inject L10n L
 @implements IDisposable
 
-<PageTitle>@L["admin.title"] — @L["app.title"]</PageTitle>
+<PageTitle>@L.De("admin.title") — @L.De("app.title")</PageTitle>
 
 <div class="edi-app @(_theme == "dark" ? "theme-dark" : "")">
     <header class="edi-header">
         <div class="edi-brand">
-            <span class="edi-title">@L["app.title"]</span>
+            <span class="edi-title">@L.De("app.title")</span>
             <span class="edi-subtitle"><span class="edi-subtitle-label">@ActiveTabLabel</span></span>
         </div>
         <div class="edi-controls">
-            <a href="/" class="btn btn-sm btn-outline-light">← @L["admin.backToApp"]</a>
+            <a href="/" class="btn btn-sm btn-outline-light">← @L.De("admin.backToApp")</a>
             <button class="btn btn-sm btn-outline-light" @onclick="ToggleTheme">
-                @(_theme == "dark" ? L["theme.light"] : L["theme.dark"])
+                @(_theme == "dark" ? "Hell" : "Dunkel")
             </button>
             @if (Store.IsAuthenticated)
             {
                 <span class="edi-controls-sep"></span>
-                <button class="btn btn-sm btn-outline-light" @onclick="() => _showCredForm = !_showCredForm">⚙ @L["admin.changePw"]</button>
-                <button class="btn btn-sm btn-outline-light" @onclick="Store.Logout">@L["admin.logout"]</button>
+                <button class="btn btn-sm btn-outline-light" @onclick="() => _showCredForm = !_showCredForm">⚙ @L.De("admin.changePw")</button>
+                <button class="btn btn-sm btn-outline-light" @onclick="Store.Logout">@L.De("admin.logout")</button>
             }
         </div>
     </header>
@@ -40,27 +40,27 @@
             @* ── Login ── *@
             <div class="admin-login-wrap">
                 <div class="edi-card admin-login-card">
-                    <div class="edi-card-header">@L["admin.login"]</div>
+                    <div class="edi-card-header">@L.De("admin.login")</div>
                     <div class="p-4">
                         @if (_loginError)
                         {
-                            <div class="edi-alert mb-3">@L["admin.loginError"]</div>
+                            <div class="edi-alert mb-3">@L.De("admin.loginError")</div>
                         }
                         <div class="mb-3">
-                            <label class="form-label admin-label">@L["admin.user"]</label>
+                            <label class="form-label admin-label">@L.De("admin.user")</label>
                             <input class="form-control form-control-sm admin-input"
                                    value="@_loginUser"
                                    @oninput="e => _loginUser = e.Value?.ToString() ?? string.Empty"
                                    @onkeyup="OnLoginKey" placeholder="admin" />
                         </div>
                         <div class="mb-3">
-                            <label class="form-label admin-label">@L["admin.password"]</label>
+                            <label class="form-label admin-label">@L.De("admin.password")</label>
                             <input type="password" class="form-control form-control-sm admin-input"
                                    value="@_loginPass"
                                    @oninput="e => _loginPass = e.Value?.ToString() ?? string.Empty"
                                    @onkeyup="OnLoginKey" />
                         </div>
-                        <button class="btn btn-sm btn-primary w-100" @onclick="DoLogin">@L["admin.loginBtn"]</button>
+                        <button class="btn btn-sm btn-primary w-100" @onclick="DoLogin">@L.De("admin.loginBtn")</button>
                     </div>
                 </div>
             </div>
@@ -69,36 +69,36 @@
         {
             @* ── Tabs ── *@
             <div class="admin-tabs">
-                <button class="admin-tab @(_activeTab == "gln"     ? "active" : "")" @onclick='() => _activeTab = "gln"'>@L["admin.tabGln"]</button>
-                <button class="admin-tab @(_activeTab == "rules"   ? "active" : "")" @onclick='() => _activeTab = "rules"'>@L["admin.tabRules"]</button>
-                <button class="admin-tab @(_activeTab == "stats"   ? "active" : "")" @onclick='() => _activeTab = "stats"'>@L["admin.tabStats"]</button>
-                <button class="admin-tab @(_activeTab == "history" ? "active" : "")" @onclick="OpenHistory">@L["admin.tabHistory"] @(_historyCount > 0 ? $"({_historyCount})" : "")</button>
+                <button class="admin-tab @(_activeTab == "gln"     ? "active" : "")" @onclick='() => _activeTab = "gln"'>@L.De("admin.tabGln")</button>
+                <button class="admin-tab @(_activeTab == "rules"   ? "active" : "")" @onclick='() => _activeTab = "rules"'>@L.De("admin.tabRules")</button>
+                <button class="admin-tab @(_activeTab == "stats"   ? "active" : "")" @onclick='() => _activeTab = "stats"'>@L.De("admin.tabStats")</button>
+                <button class="admin-tab @(_activeTab == "history" ? "active" : "")" @onclick="OpenHistory">@L.De("admin.tabHistory") @(_historyCount > 0 ? $"({_historyCount})" : "")</button>
             </div>
 
             @if (_activeTab == "gln")
             {
                 @* ── Toolbar ── *@
                 <div class="result-toolbar admin-toolbar">
-                    <input class="form-control form-control-sm admin-search" placeholder="@L["admin.search"]"
+                    <input class="form-control form-control-sm admin-search" placeholder="@L.De("admin.search")"
                            @bind="_search" @bind:event="oninput" />
                     <select class="form-select form-select-sm admin-filter"
                             @bind="_filterGroup">
-                        <option value="">@L["admin.allGroups"]</option>
+                        <option value="">@L.De("admin.allGroups")</option>
                         @foreach (var g in Groups)
                         { <option value="@g">@g</option> }
                     </select>
                     <div class="admin-toolbar-sep"></div>
-                    <button class="btn btn-sm btn-success" @onclick="NewEntry">+ @L["admin.add"]</button>
-                    <button class="btn btn-sm btn-outline-secondary" @onclick="ShowResetConfirm">↺ @L["admin.reset"]</button>
+                    <button class="btn btn-sm btn-success" @onclick="NewEntry">+ @L.De("admin.add")</button>
+                    <button class="btn btn-sm btn-outline-secondary" @onclick="ShowResetConfirm">↺ @L.De("admin.reset")</button>
                 </div>
 
                 @* ── Reset confirmation ── *@
                 @if (_confirmReset)
                 {
                     <div class="edi-alert" style="display:flex;align-items:center;gap:1rem;">
-                        <span>@L["admin.resetConfirm"]</span>
-                        <button class="btn btn-sm btn-danger" @onclick="DoReset">@L["admin.resetYes"]</button>
-                        <button class="btn btn-sm btn-outline-secondary" @onclick="() => _confirmReset = false">@L["admin.cancel"]</button>
+                        <span>@L.De("admin.resetConfirm")</span>
+                        <button class="btn btn-sm btn-danger" @onclick="DoReset">@L.De("admin.resetYes")</button>
+                        <button class="btn btn-sm btn-outline-secondary" @onclick="() => _confirmReset = false">@L.De("admin.cancel")</button>
                     </div>
                 }
 
@@ -106,22 +106,22 @@
                 @if (_showCredForm)
                 {
                     <div class="edi-card mb-3">
-                        <div class="edi-card-header">@L["admin.changePw"]</div>
+                        <div class="edi-card-header">@L.De("admin.changePw")</div>
                         <div class="p-3" style="display:flex;gap:1rem;flex-wrap:wrap;align-items:flex-end;">
                             <div>
-                                <label class="admin-label">@L["admin.user"]</label>
+                                <label class="admin-label">@L.De("admin.user")</label>
                                 <input class="form-control form-control-sm admin-input" @bind="_newUser" />
                             </div>
                             <div>
-                                <label class="admin-label">@L["admin.newPassword"]</label>
+                                <label class="admin-label">@L.De("admin.newPassword")</label>
                                 <input type="password" class="form-control form-control-sm admin-input" @bind="_newPass" />
                             </div>
                             <div>
-                                <label class="admin-label">@L["admin.confirmPassword"]</label>
+                                <label class="admin-label">@L.De("admin.confirmPassword")</label>
                                 <input type="password" class="form-control form-control-sm admin-input" @bind="_newPass2" />
                             </div>
-                            <button class="btn btn-sm btn-primary" @onclick="SaveCreds">@L["admin.save"]</button>
-                            <button class="btn btn-sm btn-outline-secondary" @onclick="() => _showCredForm = false">@L["admin.cancel"]</button>
+                            <button class="btn btn-sm btn-primary" @onclick="SaveCreds">@L.De("admin.save")</button>
+                            <button class="btn btn-sm btn-outline-secondary" @onclick="() => _showCredForm = false">@L.De("admin.cancel")</button>
                             @if (_credMsg is not null)
                             { <span style="font-size:.8rem;color:#28a745;">@_credMsg</span> }
                         </div>
@@ -132,43 +132,43 @@
                 @if (_editing is not null)
                 {
                     <div class="edi-card mb-3">
-                        <div class="edi-card-header">@(_isNew ? L["admin.add"] : L["admin.edit"])</div>
+                        <div class="edi-card-header">@(_isNew ? "Neu" : "Bearbeiten")</div>
                         <div class="p-3">
                             <div class="admin-form-grid">
                                 <div>
-                                    <label class="admin-label">@L["admin.fieldGroup"]</label>
+                                    <label class="admin-label">@L.De("admin.fieldGroup")</label>
                                     <input class="form-control form-control-sm admin-input" @bind="_editing.Group" />
                                 </div>
                                 <div>
-                                    <label class="admin-label">@L["admin.fieldFilNr"]</label>
+                                    <label class="admin-label">@L.De("admin.fieldFilNr")</label>
                                     <input type="number" class="form-control form-control-sm admin-input" @bind="_editing.FilNr" />
                                 </div>
                                 <div>
-                                    <label class="admin-label">@L["admin.fieldName"]</label>
+                                    <label class="admin-label">@L.De("admin.fieldName")</label>
                                     <input class="form-control form-control-sm admin-input" @bind="_editing.Name" />
                                 </div>
                                 <div>
-                                    <label class="admin-label">@L["admin.fieldOrt"]</label>
+                                    <label class="admin-label">@L.De("admin.fieldOrt")</label>
                                     <input class="form-control form-control-sm admin-input" @bind="_editing.Ort" />
                                 </div>
                                 <div>
-                                    <label class="admin-label">NAD+BY (@L["invoice.buyer"])</label>
+                                    <label class="admin-label">NAD+BY (@L.De("invoice.buyer"))</label>
                                     <input class="form-control form-control-sm admin-input font-mono" @bind="_editing.GlnBy" maxlength="13" />
                                 </div>
                                 <div>
-                                    <label class="admin-label">NAD+IV (@L["invoice.invoicee"])</label>
+                                    <label class="admin-label">NAD+IV (@L.De("invoice.invoicee"))</label>
                                     <input class="form-control form-control-sm admin-input font-mono" @bind="_editing.GlnIv" maxlength="13" />
                                 </div>
                                 <div>
-                                    <label class="admin-label">NAD+DP (@L["invoice.delivery"])</label>
+                                    <label class="admin-label">NAD+DP (@L.De("invoice.delivery"))</label>
                                     <input class="form-control form-control-sm admin-input font-mono" @bind="_editing.GlnDp" maxlength="13" />
                                 </div>
                             </div>
                             @if (_editError is not null)
                             { <div class="edi-alert mt-2">@_editError</div> }
                             <div class="mt-3" style="display:flex;gap:.5rem;">
-                                <button class="btn btn-sm btn-primary" @onclick="SaveEntry">@L["admin.save"]</button>
-                                <button class="btn btn-sm btn-outline-secondary" @onclick="CancelEdit">@L["admin.cancel"]</button>
+                                <button class="btn btn-sm btn-primary" @onclick="SaveEntry">@L.De("admin.save")</button>
+                                <button class="btn btn-sm btn-outline-secondary" @onclick="CancelEdit">@L.De("admin.cancel")</button>
                             </div>
                         </div>
                     </div>
@@ -177,16 +177,16 @@
                 @* ── GLN Table ── *@
                 <div class="edi-card">
                     <div class="edi-card-header">
-                        @L["admin.entries"] (@FilteredEntries.Count())
+                        @L.De("admin.entries") (@FilteredEntries.Count())
                     </div>
                     <div class="table-responsive">
                         <table class="table table-sm edi-table mb-0">
                             <thead>
                                 <tr>
-                                    <th>@L["admin.fieldGroup"]</th>
-                                    <th>@L["admin.fieldFilNr"]</th>
-                                    <th>@L["admin.fieldName"]</th>
-                                    <th>@L["admin.fieldOrt"]</th>
+                                    <th>@L.De("admin.fieldGroup")</th>
+                                    <th>@L.De("admin.fieldFilNr")</th>
+                                    <th>@L.De("admin.fieldName")</th>
+                                    <th>@L.De("admin.fieldOrt")</th>
                                     <th>NAD+BY</th>
                                     <th>NAD+IV</th>
                                     <th>NAD+DP</th>
@@ -225,8 +225,8 @@
                         <button class="rules-subtab @(_rulesSubTab == "invrpt"  ? "active" : "")" @onclick='() => _rulesSubTab = "invrpt"'>INVRPT</button>
                     </div>
                     <div style="display:flex;gap:.5rem;margin-left:auto;">
-                        <button class="btn btn-sm btn-outline-secondary" @onclick="EnableAllRules">@L["admin.enableAll"]</button>
-                        <button class="btn btn-sm btn-outline-secondary" @onclick="ResetRules">↺ @L["admin.ruleResetAll"]</button>
+                        <button class="btn btn-sm btn-outline-secondary" @onclick="EnableAllRules">@L.De("admin.enableAll")</button>
+                        <button class="btn btn-sm btn-outline-secondary" @onclick="ResetRules">↺ @L.De("admin.ruleResetAll")</button>
                     </div>
                 </div>
 
@@ -238,11 +238,11 @@
                             <table class="table table-sm edi-table mb-0">
                                 <thead>
                                     <tr>
-                                        <th style="width:120px">@L["admin.ruleCode"]</th>
-                                        <th>@L["admin.ruleDesc"]</th>
-                                        <th style="width:90px">@L["admin.ruleDefault"]</th>
-                                        <th style="width:80px">@L["admin.ruleEnabled"]</th>
-                                        <th style="width:120px">@L["admin.ruleSeverity"]</th>
+                                        <th style="width:120px">@L.De("admin.ruleCode")</th>
+                                        <th>@L.De("admin.ruleDesc")</th>
+                                        <th style="width:90px">@L.De("admin.ruleDefault")</th>
+                                        <th style="width:80px">@L.De("admin.ruleEnabled")</th>
+                                        <th style="width:120px">@L.De("admin.ruleSeverity")</th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -266,7 +266,7 @@
                                                 <select class="form-select form-select-sm sev-select-@(cfg.Override.HasValue ? cfg.Override.Value.ToString().ToLower() : "default")" style="font-size:.75rem;min-width:7.5rem;"
                                                         value="@(cfg.Override.HasValue ? cfg.Override.Value.ToString() : "")"
                                                         @onchange="e => SetSeverityOverride(ruleCode, e.Value?.ToString())">
-                                                    <option value="">@L["admin.ruleDefault"]</option>
+                                                    <option value="">@L.De("admin.ruleDefault")</option>
                                                     <option value="Error">Fehler</option>
                                                     <option value="Warning">Warnung</option>
                                                 </select>
@@ -283,7 +283,7 @@
             {
                 <div class="result-toolbar admin-toolbar" style="margin-bottom:.5rem;flex-wrap:wrap;gap:.4rem;">
                     <input class="form-control form-control-sm admin-search" style="max-width:200px;"
-                           placeholder="@L["admin.search"]" @bind="_hSearch" @bind:event="oninput" />
+                           placeholder="@L.De("admin.search")" @bind="_hSearch" @bind:event="oninput" />
                     <input type="date" class="form-control form-control-sm" style="max-width:140px;"
                            @bind="_hDateFrom" @bind:event="oninput" />
                     <input type="date" class="form-control form-control-sm" style="max-width:140px;"
@@ -296,14 +296,14 @@
                         <option value="INVRPT">INVRPT</option>
                     </select>
                     <label class="d-flex align-items-center gap-1" style="font-size:.82rem;white-space:nowrap;margin-left:.5rem;">
-                        <input type="checkbox" @bind="_hOnlyInvalid" /> @L["admin.historyOnlyInvalid"]
+                        <input type="checkbox" @bind="_hOnlyInvalid" /> @L.De("admin.historyOnlyInvalid")
                     </label>
                     <label class="d-flex align-items-center gap-1" style="font-size:.82rem;white-space:nowrap;margin-left:.75rem;">
-                        <input type="checkbox" @bind="_hOnlyTest" /> @L["admin.historyOnlyTest"]
+                        <input type="checkbox" @bind="_hOnlyTest" /> @L.De("admin.historyOnlyTest")
                     </label>
                     <div style="display:flex;gap:.4rem;margin-left:auto;">
                         <button class="btn btn-sm btn-outline-secondary" @onclick="ExportHistoryCsv">⬇ CSV</button>
-                        <button class="btn btn-sm btn-outline-danger"    @onclick="ClearHistory">✕ @L["admin.historyClear"]</button>
+                        <button class="btn btn-sm btn-outline-danger"    @onclick="ClearHistory">✕ @L.De("admin.historyClear")</button>
                     </div>
                 </div>
 
@@ -313,24 +313,24 @@
                 }
                 else if (!HistoryFiltered.Any())
                 {
-                    <div class="edi-card"><p class="p-3 mb-0" style="color:#888;font-size:.88rem;">@L["admin.noHistory"]</p></div>
+                    <div class="edi-card"><p class="p-3 mb-0" style="color:#888;font-size:.88rem;">@L.De("admin.noHistory")</p></div>
                 }
                 else
                 {
                     <div class="edi-card">
-                        <div class="edi-card-header">@L["admin.tabHistory"] — @HistoryFiltered.Count() @L["admin.historyEntries"]</div>
+                        <div class="edi-card-header">@L.De("admin.tabHistory") — @HistoryFiltered.Count() @L.De("admin.historyEntries")</div>
                         <div class="table-responsive">
                             <table class="table table-sm edi-table mb-0">
                                 <thead>
                                     <tr>
-                                        <th style="width:140px">@L["admin.statsTimestamp"]</th>
-                                        <th>@L["admin.historyFile"]</th>
+                                        <th style="width:140px">@L.De("admin.statsTimestamp")</th>
+                                        <th>@L.De("admin.historyFile")</th>
                                         <th style="width:80px">Typ</th>
-                                        <th>@L["admin.statsSeller"]</th>
-                                        <th class="text-center">@L["admin.statsIsTest"]</th>
-                                        <th class="text-end">@L["admin.statsErrors"]</th>
-                                        <th class="text-end">@L["admin.statsWarnings"]</th>
-                                        <th>@L["admin.statsStatus"]</th>
+                                        <th>@L.De("admin.statsSeller")</th>
+                                        <th class="text-center">@L.De("admin.statsIsTest")</th>
+                                        <th class="text-end">@L.De("admin.statsErrors")</th>
+                                        <th class="text-end">@L.De("admin.statsWarnings")</th>
+                                        <th>@L.De("admin.statsStatus")</th>
                                         <th style="width:30px"></th>
                                     </tr>
                                 </thead>
@@ -390,13 +390,13 @@
             else if (_activeTab == "stats")
             {
                 <div class="result-toolbar admin-toolbar" style="margin-bottom:.5rem;">
-                    <span style="font-size:.85rem;color:#5a8fa8;">@L["admin.tabStats"]</span>
-                    <button class="btn btn-sm btn-outline-secondary ms-auto" @onclick="ResetStats">↺ @L["admin.statsReset"]</button>
+                    <span style="font-size:.85rem;color:#5a8fa8;">@L.De("admin.tabStats")</span>
+                    <button class="btn btn-sm btn-outline-secondary ms-auto" @onclick="ResetStats">↺ @L.De("admin.statsReset")</button>
                 </div>
 
                 @if (Store.Stats.TotalRuns == 0)
                 {
-                    <div class="edi-card"><p class="p-3 mb-0" style="color:#888;font-size:.88rem;">@L["admin.noStats"]</p></div>
+                    <div class="edi-card"><p class="p-3 mb-0" style="color:#888;font-size:.88rem;">@L.De("admin.noStats")</p></div>
                 }
                 else
                 {
@@ -404,23 +404,23 @@
                     <div class="stats-cards">
                         <div class="stats-card">
                             <div class="stats-card-value">@Store.Stats.TotalRuns</div>
-                            <div class="stats-card-label">@L["admin.statsTotal"]</div>
+                            <div class="stats-card-label">@L.De("admin.statsTotal")</div>
                         </div>
                         <div class="stats-card">
                             <div class="stats-card-value" style="color:#28a745;">@Store.Stats.TotalValid</div>
-                            <div class="stats-card-label">@L["admin.statsValid"]</div>
+                            <div class="stats-card-label">@L.De("admin.statsValid")</div>
                         </div>
                         <div class="stats-card">
                             <div class="stats-card-value" style="color:#dc3545;">@(Store.Stats.TotalRuns - Store.Stats.TotalValid)</div>
-                            <div class="stats-card-label">@L["admin.statsInvalid"]</div>
+                            <div class="stats-card-label">@L.De("admin.statsInvalid")</div>
                         </div>
                         <div class="stats-card">
                             <div class="stats-card-value">@(Store.Stats.TotalRuns > 0 ? $"{(Store.Stats.TotalRuns - Store.Stats.TotalValid) * 100 / Store.Stats.TotalRuns} %" : "–")</div>
-                            <div class="stats-card-label">@L["admin.statsErrorRate"]</div>
+                            <div class="stats-card-label">@L.De("admin.statsErrorRate")</div>
                         </div>
                         <div class="stats-card">
                             <div class="stats-card-value" style="color:#f0ad4e;">@Store.Stats.TestFileCount</div>
-                            <div class="stats-card-label">@L["admin.statsTests"]</div>
+                            <div class="stats-card-label">@L.De("admin.statsTests")</div>
                         </div>
                     </div>
 
@@ -429,7 +429,7 @@
                     {
                         var maxErr = topErr[0].Value;
                         <div class="edi-card mb-3">
-                            <div class="edi-card-header">@L["admin.statsTopErrors"]</div>
+                            <div class="edi-card-header">@L.De("admin.statsTopErrors")</div>
                             <div class="p-3">
                                 <div class="stats-rule-grid">
                                 @foreach (var kv in topErr)
@@ -450,7 +450,7 @@
                     {
                         var maxRec = topRec[0].Value;
                         <div class="edi-card mb-3">
-                            <div class="edi-card-header">@L["admin.statsTopRecs"]</div>
+                            <div class="edi-card-header">@L.De("admin.statsTopRecs")</div>
                             <div class="p-3">
                                 <div class="stats-rule-grid">
                                 @foreach (var kv in topRec)
@@ -470,7 +470,7 @@
                     @if (Store.Stats.RunsByDate.Any())
                     {
                         <div class="edi-card mb-3">
-                            <div class="edi-card-header">@L["admin.statsPerPeriod"]</div>
+                            <div class="edi-card-header">@L.De("admin.statsPerPeriod")</div>
                             <div class="p-3">
                                 @{ var byDate = Store.Stats.RunsByDate.OrderByDescending(kv => kv.Key).Take(14).ToList();
                                    var maxDate = byDate.Any() ? byDate.Max(kv => kv.Value) : 1; }
@@ -492,7 +492,7 @@
                     @if (Store.Stats.SellerFrequency.Any())
                     {
                         <div class="edi-card mb-3">
-                            <div class="edi-card-header">@L["admin.statsTopSellers"]</div>
+                            <div class="edi-card-header">@L.De("admin.statsTopSellers")</div>
                             <div class="p-3">
                                 @{ var topSellers = Store.Stats.SellerFrequency.OrderByDescending(kv => kv.Value).Take(10).ToList();
                                    var maxSeller  = topSellers.Any() ? topSellers.Max(kv => kv.Value) : 1; }
@@ -514,17 +514,17 @@
                     @if (Store.Stats.RecentRuns.Any())
                     {
                         <div class="edi-card">
-                            <div class="edi-card-header">@L["admin.statsRecentRuns"]</div>
+                            <div class="edi-card-header">@L.De("admin.statsRecentRuns")</div>
                             <div class="table-responsive">
                                 <table class="table table-sm edi-table mb-0">
                                     <thead>
                                         <tr>
-                                            <th>@L["admin.statsTimestamp"]</th>
-                                            <th>@L["admin.statsSeller"]</th>
-                                            <th class="text-end">@L["admin.statsErrors"]</th>
-                                            <th class="text-end">@L["admin.statsWarnings"]</th>
-                                            <th>@L["admin.statsStatus"]</th>
-                                            <th>@L["admin.statsIsTest"]</th>
+                                            <th>@L.De("admin.statsTimestamp")</th>
+                                            <th>@L.De("admin.statsSeller")</th>
+                                            <th class="text-end">@L.De("admin.statsErrors")</th>
+                                            <th class="text-end">@L.De("admin.statsWarnings")</th>
+                                            <th>@L.De("admin.statsStatus")</th>
+                                            <th>@L.De("admin.statsIsTest")</th>
                                         </tr>
                                     </thead>
                                     <tbody>
@@ -602,10 +602,10 @@
     EditableEntry? _editing;
 
     string ActiveTabLabel => _activeTab switch {
-        "rules"   => L["admin.tabRules"],
-        "stats"   => L["admin.tabStats"],
-        "history" => L["admin.tabHistory"],
-        _         => L["admin.tabGln"],
+        "rules"   => "Regeln",
+        "stats"   => "Statistiken",
+        "history" => "Verlauf",
+        _         => "GLN-Daten",
     };
 
     IEnumerable<string> Groups => Store.Entries.Select(e => e.Group).Distinct().OrderBy(g => g);
@@ -623,9 +623,7 @@
 
     protected override async Task OnInitializedAsync()
     {
-        L.Changed += Refresh;
         Store.Changed += Refresh;
-        L.Set("de");
         await Store.InitAsync();
         _historyCount = await History.GetCountAsync();
         _theme = await JS.InvokeAsync<string?>("ls.get", "theme") ?? "";
@@ -730,7 +728,6 @@
 
     public void Dispose()
     {
-        L.Changed -= Refresh;
         Store.Changed -= Refresh;
     }
 
