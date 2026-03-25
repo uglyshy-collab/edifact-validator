@@ -7,6 +7,7 @@ public class ValidationRecord
     public string FileName     { get; set; } = "";
     public string SellerName   { get; set; } = "";
     public string SellerGln    { get; set; } = "";
+    public string MessageType  { get; set; } = "";
     public bool   IsTest       { get; set; }
     public bool   IsValid      { get; set; }
     public int    ErrorCount   { get; set; }

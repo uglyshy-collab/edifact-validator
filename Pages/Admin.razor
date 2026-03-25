@@ -11,7 +11,7 @@
     <header class="edi-header">
         <div class="edi-brand">
             <span class="edi-title">@L["app.title"]</span>
-            <span class="edi-subtitle">@L["admin.title"]</span>
+            <span class="edi-subtitle"><span class="edi-subtitle-label">@ActiveTabLabel</span></span>
         </div>
         <div class="edi-controls">
             <a href="/" class="btn btn-sm btn-outline-light">← @L["admin.backToApp"]</a>
@@ -250,7 +250,9 @@
                                     {
                                         var cfg = Store.Rules.TryGetValue(ruleCode, out var c) ? c : new RuleConfig { Code = ruleCode };
                                         var defSev = DefaultSeverity(ruleCode);
-                                        <tr class="@(!cfg.Enabled ? "rule-disabled" : "")">
+                                        var effSev = cfg.Override ?? defSev;
+                                        var rowBg  = !cfg.Enabled ? "rule-disabled" : effSev == Severity.Error ? "rule-row-error" : effSev == Severity.Warning ? "rule-row-warning" : "";
+                                        <tr class="@rowBg">
                                             <td><code style="font-size:.75rem;">@ruleCode</code></td>
                                             <td style="font-size:.82rem;">@L[RuleMsgKey(ruleCode)]</td>
                                             <td><span class="badge @(defSev == Severity.Error ? "bg-danger" : "bg-warning text-dark")" style="font-size:.7rem;">@defSev</span></td>
@@ -261,7 +263,7 @@
                                                 </div>
                                             </td>
                                             <td>
-                                                <select class="form-select form-select-sm" style="font-size:.75rem;min-width:7.5rem;"
+                                                <select class="form-select form-select-sm sev-select-@(cfg.Override.HasValue ? cfg.Override.Value.ToString().ToLower() : "default")" style="font-size:.75rem;min-width:7.5rem;"
                                                         value="@(cfg.Override.HasValue ? cfg.Override.Value.ToString() : "")"
                                                         @onchange="e => SetSeverityOverride(ruleCode, e.Value?.ToString())">
                                                     <option value="">@L["admin.ruleDefault"]</option>
@@ -286,6 +288,13 @@
                            @bind="_hDateFrom" @bind:event="oninput" />
                     <input type="date" class="form-control form-control-sm" style="max-width:140px;"
                            @bind="_hDateTo" @bind:event="oninput" />
+                    <select class="form-select form-select-sm" style="max-width:130px;" @bind="_hMsgType">
+                        <option value="">Alle Typen</option>
+                        <option value="INVOIC">INVOIC</option>
+                        <option value="ORDRSP">ORDRSP</option>
+                        <option value="DESADV">DESADV</option>
+                        <option value="INVRPT">INVRPT</option>
+                    </select>
                     <label class="d-flex align-items-center gap-1" style="font-size:.82rem;white-space:nowrap;margin-left:.5rem;">
                         <input type="checkbox" @bind="_hOnlyInvalid" /> @L["admin.historyOnlyInvalid"]
                     </label>
@@ -316,6 +325,7 @@
                                     <tr>
                                         <th style="width:140px">@L["admin.statsTimestamp"]</th>
                                         <th>@L["admin.historyFile"]</th>
+                                        <th style="width:80px">Typ</th>
                                         <th>@L["admin.statsSeller"]</th>
                                         <th class="text-center">@L["admin.statsIsTest"]</th>
                                         <th class="text-end">@L["admin.statsErrors"]</th>
@@ -331,6 +341,7 @@
                                         <tr class="@(!rec.IsValid ? "row-error" : "")">
                                             <td style="font-size:.78rem;">@rec.Timestamp</td>
                                             <td style="font-size:.78rem;white-space:nowrap;">@rec.FileName</td>
+                                            <td><span class="badge bg-secondary" style="font-size:.68rem;">@(string.IsNullOrEmpty(rec.MessageType) ? "?" : rec.MessageType)</span></td>
                                             <td style="font-size:.78rem;max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="@(rec.SellerName + (string.IsNullOrEmpty(rec.SellerGln) ? "" : " / " + rec.SellerGln))">
                                                 @(string.IsNullOrEmpty(rec.SellerName) ? rec.SellerGln : rec.SellerName)
                                             </td>
@@ -351,7 +362,7 @@
                                         @if (expanded && rec.Issues.Any())
                                         {
                                             <tr>
-                                                <td colspan="8" style="background:#f8f8f8;padding:.5rem 1rem;">
+                                                <td colspan="9" style="background:#f8f8f8;padding:.5rem 1rem;">
                                                     <table class="table table-sm mb-0" style="font-size:.76rem;">
                                                         <thead><tr><th>Code</th><th>Segment</th><th>Zeile</th><th>Beschreibung</th></tr></thead>
                                                         <tbody>
@@ -569,6 +580,7 @@
     DateTime? _hDateTo;
     bool    _hOnlyInvalid  = false;
     bool    _hOnlyTest     = false;
+    string  _hMsgType      = "";
     long    _expandedId    = -1;
 
     IEnumerable<ValidationRecord> HistoryFiltered => (_history ?? Enumerable.Empty<ValidationRecord>())
@@ -579,6 +591,7 @@
                 || r.SellerGln.Contains(_hSearch, StringComparison.OrdinalIgnoreCase))
             && (!_hOnlyInvalid || !r.IsValid)
             && (!_hOnlyTest    ||  r.IsTest)
+            && (string.IsNullOrEmpty(_hMsgType) || r.MessageType == _hMsgType)
             && (_hDateFrom is null || DateTime.TryParseExact(r.Timestamp[..10], "dd.MM.yyyy",
                     System.Globalization.CultureInfo.InvariantCulture,
                     System.Globalization.DateTimeStyles.None, out var d) && d >= _hDateFrom.Value)
@@ -587,6 +600,13 @@
                     System.Globalization.DateTimeStyles.None, out var d2) && d2 <= _hDateTo.Value.AddDays(1)));
 
     EditableEntry? _editing;
+
+    string ActiveTabLabel => _activeTab switch {
+        "rules"   => L["admin.tabRules"],
+        "stats"   => L["admin.tabStats"],
+        "history" => L["admin.tabHistory"],
+        _         => L["admin.tabGln"],
+    };
 
     IEnumerable<string> Groups => Store.Entries.Select(e => e.Group).Distinct().OrderBy(g => g);
 

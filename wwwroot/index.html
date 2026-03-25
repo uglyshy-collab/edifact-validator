@@ -11,7 +11,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Sometype+Mono:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="css/bootstrap/bootstrap.min.css" />
     <link rel="stylesheet" href="css/app.css" />
-    <link rel="icon" type="image/png" href="favicon.png" />
+    <link rel="icon" type="image/svg+xml" href="favicon.svg" />
     <link href="edifact-validator.styles.css" rel="stylesheet" />
 </head>
 
@@ -43,30 +43,26 @@
             if (!zone || !input || zone._dropInit) return;
             zone._dropInit = true;
 
-            let n = 0; // enter/leave counter to avoid flicker on child elements
+            // input has pointer-events:none — zone handles everything
+            zone.style.cursor = 'pointer';
 
-            // Listen on both zone and the overlay input so nothing is missed
-            [zone, input].forEach(el => {
-                el.addEventListener('dragenter', e => {
-                    n++;
-                    zone.classList.add('drag-over');
-                });
-                el.addEventListener('dragleave', e => {
-                    n--;
-                    if (n <= 0) { n = 0; zone.classList.remove('drag-over'); }
-                });
-                el.addEventListener('dragover', e => e.preventDefault());
-                el.addEventListener('drop', e => {
-                    n = 0;
-                    zone.classList.remove('drag-over');
-                    // route dropped files through the hidden input so Blazor OnChange fires
-                    const dt = new DataTransfer();
-                    for (const f of e.dataTransfer.files) dt.items.add(f);
-                    if (dt.files.length) {
-                        input.files = dt.files;
-                        input.dispatchEvent(new Event('change', { bubbles: true }));
-                    }
-                });
+            zone.addEventListener('click', () => input.click());
+
+            zone.addEventListener('dragenter', e => { e.preventDefault(); zone.classList.add('drag-over'); });
+            zone.addEventListener('dragleave', e => {
+                // only remove when leaving the zone itself, not a child
+                if (!zone.contains(e.relatedTarget)) zone.classList.remove('drag-over');
+            });
+            zone.addEventListener('dragover', e => e.preventDefault());
+            zone.addEventListener('drop', e => {
+                e.preventDefault();
+                zone.classList.remove('drag-over');
+                const dt = new DataTransfer();
+                for (const f of e.dataTransfer.files) dt.items.add(f);
+                if (dt.files.length) {
+                    input.files = dt.files;
+                    input.dispatchEvent(new Event('change', { bubbles: true }));
+                }
             });
         };
 
@@ -80,6 +76,9 @@
             document.body.removeChild(a);
             URL.revokeObjectURL(u);
         };
+
+        // ── Scroll helper ─────────────────────────────────────────────────────
+        window.scrollToId = id => document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
 
         // ── IndexedDB history store ───────────────────────────────────────────
         window.idb = (() => {

@@ -17,7 +17,15 @@
     <header class="edi-header">
         <div class="edi-brand">
             <span class="edi-title">@L["app.title"]</span>
-            <span class="edi-subtitle">@L["app.subtitle"]</span>
+            <span class="edi-subtitle">
+                <span class="edi-subtitle-label">Porta IT</span>
+                <span class="edi-msg-badges">
+                    @foreach (var t in new[] { "INVOIC", "ORDRSP", "DESADV", "INVRPT" })
+                    {
+                        <span class="edi-msg-badge">@t</span>
+                    }
+                </span>
+            </span>
         </div>
         <div class="edi-controls">
             <div class="btn-group btn-group-sm me-1">
@@ -265,15 +273,45 @@
                                         </tr>
                                     </thead>
                                     <tbody>
-                                        @foreach (var issue in _issues!.Where(i => !IsRecommendation(i.Code)))
+                                        @foreach (var issue in _issues!.Where(i => i.Severity == Severity.Error))
                                         {
-                                            <tr class="@(issue.Severity == Severity.Error ? "row-error" : "row-warn")">
+                                            var canLink   = issue.LineNumber > 0;
+                                            var ln        = issue.LineNumber;
+                                            var desc      = RuleDescriptions.Get(issue.Code);
+                                            var expanded  = _expandedIssues.Contains(issue);
+                                            <tr class="row-error @(desc != null ? "report-row-expandable" : "")"
+                                                @onclick="() => { if (desc != null) ToggleIssueDetail(issue); }">
                                                 <td><strong>@issue.SegmentTag</strong></td>
-                                                <td>@(issue.LineNumber > 0 ? issue.LineNumber.ToString() : "–")</td>
+                                                <td>
+                                                    @if (canLink)
+                                                    {
+                                                        <button class="seg-jump-btn" title="@L["report.jumpToSeg"]"
+                                                                @onclick:stopPropagation="true"
+                                                                @onclick="async () => await GoToSegment(ln)">@ln ↗</button>
+                                                    }
+                                                    else { <span>–</span> }
+                                                </td>
                                                 <td><small>@(string.IsNullOrEmpty(issue.ElementPosition) ? "–" : issue.ElementPosition)</small></td>
-                                                <td><code>@issue.Code</code></td>
+                                                <td>
+                                                    <code>@issue.Code</code>
+                                                    @if (desc != null) { <span class="issue-info-icon" title="Erklärung anzeigen">@(expanded ? "▲" : "▼")</span> }
+                                                </td>
                                                 <td>@L[issue.MessageKey]</td>
                                             </tr>
+                                            @if (expanded && desc != null)
+                                            {
+                                                <tr class="issue-detail-row row-error">
+                                                    <td colspan="5">
+                                                        <div class="issue-detail-panel">
+                                                            <p>@desc.Detail</p>
+                                                            @if (desc.Example != null)
+                                                            {
+                                                                <pre class="issue-example">@desc.Example</pre>
+                                                            }
+                                                        </div>
+                                                    </td>
+                                                </tr>
+                                            }
                                         }
                                     </tbody>
                                 </table>
@@ -284,7 +322,7 @@
                     @* ── Empfehlungen ── *@
                     <div class="edi-card">
                         <div class="edi-card-header" style="color:#c8940a;">@L["report.recommendations"]</div>
-                        @if (!_issues!.Any(i => IsRecommendation(i.Code)))
+                        @if (!_issues!.Any(i => i.Severity == Severity.Warning))
                         {
                             <p class="p-3 mb-0" style="color:#5a8fa8;font-size:.88rem;">@L["report.noRecs"]</p>
                         }
@@ -302,15 +340,45 @@
                                         </tr>
                                     </thead>
                                     <tbody>
-                                        @foreach (var issue in _issues!.Where(i => IsRecommendation(i.Code)))
+                                        @foreach (var issue in _issues!.Where(i => i.Severity == Severity.Warning))
                                         {
-                                            <tr class="row-warn">
+                                            var canLink   = issue.LineNumber > 0;
+                                            var ln        = issue.LineNumber;
+                                            var desc      = RuleDescriptions.Get(issue.Code);
+                                            var expanded  = _expandedIssues.Contains(issue);
+                                            <tr class="row-warn @(desc != null ? "report-row-expandable" : "")"
+                                                @onclick="() => { if (desc != null) ToggleIssueDetail(issue); }">
                                                 <td><strong>@issue.SegmentTag</strong></td>
-                                                <td>@(issue.LineNumber > 0 ? issue.LineNumber.ToString() : "–")</td>
+                                                <td>
+                                                    @if (canLink)
+                                                    {
+                                                        <button class="seg-jump-btn" title="@L["report.jumpToSeg"]"
+                                                                @onclick:stopPropagation="true"
+                                                                @onclick="async () => await GoToSegment(ln)">@ln ↗</button>
+                                                    }
+                                                    else { <span>–</span> }
+                                                </td>
                                                 <td><small>@(string.IsNullOrEmpty(issue.ElementPosition) ? "–" : issue.ElementPosition)</small></td>
-                                                <td><code>@issue.Code</code></td>
+                                                <td>
+                                                    <code>@issue.Code</code>
+                                                    @if (desc != null) { <span class="issue-info-icon" title="Erklärung anzeigen">@(expanded ? "▲" : "▼")</span> }
+                                                </td>
                                                 <td>@L[issue.MessageKey]</td>
                                             </tr>
+                                            @if (expanded && desc != null)
+                                            {
+                                                <tr class="issue-detail-row row-warn">
+                                                    <td colspan="5">
+                                                        <div class="issue-detail-panel">
+                                                            <p>@desc.Detail</p>
+                                                            @if (desc.Example != null)
+                                                            {
+                                                                <pre class="issue-example">@desc.Example</pre>
+                                                            }
+                                                        </div>
+                                                    </td>
+                                                </tr>
+                                            }
                                         }
                                     </tbody>
                                 </table>
@@ -478,7 +546,8 @@
                                 var hasSev   = issuesByLine.TryGetValue(seg.LineNumber, out var sev);
                                 var rowClass = hasSev ? (sev == Severity.Error ? "seg-has-error" : "seg-has-warn") : "";
                                 var isExpanded = _expandedSegs.Contains(seg.SegmentIndex);
-                                <div class="seg-row @rowClass" @onclick="() => ToggleSeg(seg.SegmentIndex)">
+                                <div id="seg-@seg.LineNumber" class="seg-row @rowClass" @onclick="() => ToggleSeg(seg.SegmentIndex)">
+                                    <span class="seg-chevron">@(isExpanded ? "▾" : "▸")</span>
                                     <span class="seg-idx">@seg.LineNumber</span>
                                     <span class="seg-tag @SegTagClass(seg.Tag)">@seg.Tag</span>
                                     @if (!isExpanded)
@@ -487,8 +556,8 @@
                                     }
                                     @if (hasSev)
                                     {
-                                        <span style="font-size:.72rem;margin-left:auto;flex-shrink:0;color:@(sev==Severity.Error ? "#dc3545" : "#f0ad4e")">
-                                            @(sev == Severity.Error ? "✕" : "▲")
+                                        <span style="font-size:.8rem;margin-left:auto;flex-shrink:0;color:@(sev==Severity.Error ? "#dc3545" : "#f0ad4e")">
+                                            @(sev == Severity.Error ? "✕" : "⚠")
                                         </span>
                                     }
                                 </div>
@@ -541,6 +610,7 @@
     // Result view state
     string                 _resultTab        = "report";
     HashSet<int>           _expandedSegs     = new();
+    HashSet<ValidationIssue> _expandedIssues = new();
     // Batch mode
     bool                   _isBatch          = false;
     List<BatchResult>?     _batchResults;
@@ -599,11 +669,12 @@
         _batchResults  = null;
         _expandedBatch = null;
         _expandedSegs.Clear();
+        _expandedIssues.Clear();
     }
 
     async Task OnFileSelected(InputFileChangeEventArgs e)
     {
-        var files = e.GetMultipleFiles(20).ToList();
+        var files = e.GetMultipleFiles(100).ToList();
         if (files.Count == 0) return;
 
         _parseError = null;
@@ -716,6 +787,7 @@
                 {
                     Timestamp    = DateTime.Now.ToString("dd.MM.yyyy HH:mm:ss"),
                     FileName     = _fileName,
+                    MessageType  = _messageType,
                     SellerName   = sellerName   ?? "",
                     SellerGln    = sellerGln,
                     IsTest       = _issues.Any(i => i.Code == "WARN_001"),
@@ -766,6 +838,7 @@
                     {
                         Timestamp    = DateTime.Now.ToString("dd.MM.yyyy HH:mm:ss"),
                         FileName     = name,
+                        MessageType  = msgType,
                         IsValid      = issues.Count(i => i.Severity == Severity.Error) == 0,
                         ErrorCount   = issues.Count(i => i.Severity == Severity.Error),
                         WarningCount = issues.Count(i => i.Severity == Severity.Warning),
@@ -861,9 +934,25 @@
 
     // ── Segment view helpers ──────────────────────────────────────────────────
 
+    async Task GoToSegment(int lineNumber)
+    {
+        _resultTab = "segments";
+        // find segment index by line number and expand it
+        var seg = _interchange?.AllSegments.FirstOrDefault(s => s.LineNumber == lineNumber);
+        if (seg is not null) _expandedSegs.Add(seg.SegmentIndex);
+        StateHasChanged();
+        await Task.Delay(50); // wait for render
+        await JS.InvokeVoidAsync("scrollToId", $"seg-{lineNumber}");
+    }
+
     void ToggleSeg(int idx)
     {
         if (!_expandedSegs.Remove(idx)) _expandedSegs.Add(idx);
+    }
+
+    void ToggleIssueDetail(ValidationIssue issue)
+    {
+        if (!_expandedIssues.Remove(issue)) _expandedIssues.Add(issue);
     }
 
     static bool IsRecommendation(string code) =>

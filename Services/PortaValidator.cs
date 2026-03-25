@@ -189,10 +189,10 @@ public class PortaValidator
         CheckMoa(msg, "125", "PORTA_025", "porta.025");
         CheckMoa(msg, "124", "PORTA_026", "porta.026");
 
-        // PORTA_027 — Null-Rechnung
-        var moa77Val = GetMoaValue(msg, "77");
-        if (moa77Val <= 0)
-            Err("MOA", 0, 0, "DE1.C1=77", "PORTA_027", "porta.027");
+        // PORTA_027 — Null-Rechnung (only when MOA+77 is present and value ≤ 0)
+        var moa77Seg = msg.Segments.FirstOrDefault(s => s.Tag == "MOA" && s.Comp(1, 1) == "77");
+        if (moa77Seg is not null && ParseDecimal(moa77Seg.Comp(1, 2)) <= 0)
+            Err("MOA", moa77Seg.SegmentIndex, moa77Seg.LineNumber, "DE1.C1=77", "PORTA_027", "porta.027");
 
         // PORTA_028 — Rechnungsdatum nicht vor Lieferdatum
         if (dtm137 is not null && dtm35 is not null)

@@ -1,3 +1,5 @@
+using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
 using Microsoft.JSInterop;
 using EdifactValidator.Models;
@@ -20,7 +22,10 @@ public class GlnStore
     public ValidationStats Stats { get; private set; } = new();
 
     private string _credUser     = "admin";
-    private string _credPassword = "porta2024";
+    private string _credPassword = HashPassword("porta2024"); // stored as SHA-256 hex
+
+    private static string HashPassword(string pw) =>
+        Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(pw))).ToLowerInvariant();
 
     public GlnStore(IJSRuntime js) => _js = js;
 
@@ -35,8 +40,19 @@ public class GlnStore
             if (!string.IsNullOrEmpty(cj))
             {
                 var d = JsonSerializer.Deserialize<JsonElement>(cj);
-                _credUser     = d.GetProperty("user").GetString()     ?? "admin";
-                _credPassword = d.GetProperty("password").GetString() ?? "porta2024";
+                _credUser = d.GetProperty("user").GetString() ?? "admin";
+                var stored = d.GetProperty("password").GetString() ?? "";
+                // migrate plain-text passwords to SHA-256 hash on first load
+                if (stored.Length != 64 || !stored.All(c => c is >= '0' and <= '9' or >= 'a' and <= 'f'))
+                {
+                    _credPassword = HashPassword(stored);
+                    var migrated = JsonSerializer.Serialize(new { user = _credUser, password = _credPassword });
+                    await _js.InvokeVoidAsync("ls.set", CredsKey, migrated);
+                }
+                else
+                {
+                    _credPassword = stored;
+                }
             }
         }
         catch { /* keep defaults */ }
@@ -72,8 +88,19 @@ public class GlnStore
         }
         catch { }
         // Fill missing rules with defaults
-        foreach (var code in DefaultRuleCodes.Where(c => !Rules.ContainsKey(c)))
-            Rules[code] = new RuleConfig { Code = code, Enabled = true, Override = null };
+        foreach (var (code, ov) in DefaultRuleOverrides.Where(kv => !Rules.ContainsKey(kv.Key)))
+            Rules[code] = new RuleConfig { Code = code, Enabled = true, Override = ov };
+
+        // Migrate: apply new Warning defaults to rules that were never manually overridden
+        bool rulesMigrated = false;
+        foreach (var (code, ov) in DefaultRuleOverrides.Where(kv => kv.Value != null))
+            if (Rules.TryGetValue(code, out var r) && r.Override == null)
+            { Rules[code] = r with { Override = ov }; rulesMigrated = true; }
+        if (rulesMigrated)
+        {
+            var json2 = JsonSerializer.Serialize(Rules.Values.ToList());
+            await _js.InvokeVoidAsync("ls.set", RulesKey, json2);
+        }
 
         // Load stats
         try
@@ -90,7 +117,7 @@ public class GlnStore
 
     public bool Login(string user, string password)
     {
-        IsAuthenticated = user.Trim() == _credUser && password == _credPassword;
+        IsAuthenticated = user.Trim() == _credUser && HashPassword(password) == _credPassword;
         Changed?.Invoke();
         return IsAuthenticated;
     }
@@ -126,7 +153,7 @@ public class GlnStore
     public async Task SaveCredentialsAsync(string user, string password)
     {
         _credUser     = user.Trim();
-        _credPassword = password;
+        _credPassword = HashPassword(password);
         var json = JsonSerializer.Serialize(new { user = _credUser, password = _credPassword });
         await _js.InvokeVoidAsync("ls.set", CredsKey, json);
     }
@@ -154,7 +181,9 @@ public class GlnStore
 
     public async Task ResetRulesAsync()
     {
-        Rules = DefaultRuleCodes.ToDictionary(c => c, c => new RuleConfig { Code = c });
+        Rules = DefaultRuleOverrides.ToDictionary(
+            kv => kv.Key,
+            kv => new RuleConfig { Code = kv.Key, Enabled = true, Override = kv.Value });
         await _js.InvokeVoidAsync("ls.del", RulesKey);
         Changed?.Invoke();
     }
@@ -200,34 +229,92 @@ public class GlnStore
         Changed?.Invoke();
     }
 
-    private static readonly string[] DefaultRuleCodes =
+    // Default severity overrides derived from analysis of 20 valid INVOIC test files (2026-03).
+    // null  = use the rule's own default severity (Error for most rules)
+    // Severity.Warning = downgraded because the rule fires on at least one of the 20 valid files
+    private static readonly Dictionary<string, Severity?> DefaultRuleOverrides = new()
     {
-        "SYN_001","SYN_002","SYN_003","SYN_004","SYN_005","SYN_005b","SYN_006",
-        "PORTA_001","PORTA_001b","PORTA_002","PORTA_003","PORTA_004","PORTA_005",
-        "PORTA_006","PORTA_007","PORTA_008","PORTA_009","PORTA_010","PORTA_011",
-        "PORTA_012","PORTA_013","PORTA_014","PORTA_015","PORTA_016","PORTA_017",
-        "PORTA_018","PORTA_019","PORTA_019b","PORTA_020","PORTA_020b",
-        "PORTA_021","PORTA_021b","PORTA_022","PORTA_023","PORTA_024","PORTA_025",
-        "PORTA_026","PORTA_027","PORTA_028","PORTA_029","PORTA_030","PORTA_031",
-        "WARN_001","WARN_002","WARN_003","WARN_004",
-        // ORDRSP rules
-        "ORDRSP_SYN_006",
-        // DESADV rules
-        "DESADV_SYN_006",
-        "DESADV_001","DESADV_002","DESADV_003","DESADV_004","DESADV_005",
-        "DESADV_006","DESADV_007","DESADV_008","DESADV_009",
-        "DESADV_010","DESADV_011","DESADV_011b","DESADV_012","DESADV_013",
-        "DESADV_014","DESADV_016",
-        "DESADV_WARN_001","DESADV_WARN_002","DESADV_WARN_003",
-        "ORDRSP_001","ORDRSP_002","ORDRSP_003","ORDRSP_004","ORDRSP_005",
-        "ORDRSP_006","ORDRSP_007","ORDRSP_008","ORDRSP_009","ORDRSP_010",
-        "ORDRSP_011","ORDRSP_012","ORDRSP_013","ORDRSP_014","ORDRSP_014b",
-        "ORDRSP_015","ORDRSP_016","ORDRSP_017","ORDRSP_018",
-        "ORDRSP_WARN_001",
-        // INVRPT rules
-        "INVRPT_SYN_006",
-        "INVRPT_001","INVRPT_002","INVRPT_003","INVRPT_004","INVRPT_005",
-        "INVRPT_006","INVRPT_007","INVRPT_008","INVRPT_008b","INVRPT_009","INVRPT_010",
-        "INVRPT_WARN_002","INVRPT_WARN_003"
+        // ── Syntax (all clean in every test file) ──────────────────────────────
+        { "SYN_001",   null }, { "SYN_002",   null }, { "SYN_003",   null },
+        { "SYN_004",   null }, { "SYN_005",   null }, { "SYN_005b",  Severity.Warning }, // ROTHO: Sender zählt UNH/UNT nicht mit
+        { "SYN_006",   null },
+
+        // ── INVOIC Pflichtfelder ───────────────────────────────────────────────
+        { "PORTA_001",  null },               // GLN Absender immer vorhanden
+        { "PORTA_001b", null },               // GLN immer 13-stellig
+        { "PORTA_002",  Severity.Warning },   // MATHEIS (Gutschrift BGM+393) hat kein NAD+BY
+        { "PORTA_003",  Severity.Warning },   // MATHEIS hat kein NAD+IV
+        { "PORTA_004",  null },               // NAD+SU immer vorhanden
+        { "PORTA_005",  Severity.Warning },   // MATHEIS hat weder RFF+VA noch RFF+FC
+        { "PORTA_006",  Severity.Warning },   // MATHEIS: BGM+393 (Gutschrift), nicht 380
+        { "PORTA_007",  null },               // Belegnummer immer vorhanden
+        { "PORTA_008",  null },               // DTM+137 immer vorhanden
+        { "PORTA_009",  Severity.Warning },   // MATHEIS hat kein DTM+35
+        { "PORTA_010",  Severity.Warning },   // MATHEIS hat keine RFF+ON
+        { "PORTA_011",  Severity.Warning },   // MATHEIS hat keine RFF+DQ
+        { "PORTA_012",  Severity.Warning },   // KleineWolke (13Z), Steinpol (14Z) überschreiten 10
+        { "PORTA_013",  Severity.Warning },   // HIMOLLA: DTM+171 nicht direkt nach RFF+DQ
+        { "PORTA_014",  Severity.Warning },   // 15 von 20 Dateien ohne RFF+API
+        { "PORTA_015",  null },               // TAX+7+VAT immer vorhanden
+        { "PORTA_016",  null },               // CUX+2 immer vorhanden
+        { "PORTA_017",  Severity.Warning },   // HIMOLLA (Dienstl.-Pos.), Steinpol (leere GTIN), MATHEIS
+        { "PORTA_018",  Severity.Warning },   // HIMOLLA: IMD+B statt IMD+A; MATHEIS: keine Pos.
+        { "PORTA_019",  null },               // QTY+47 immer vorhanden (wo Pos. existieren)
+        { "PORTA_019b", null },               // Menge immer > 0
+        { "PORTA_020",  Severity.Warning },   // BOSCH Pos.3+4 und MATHEIS ohne MOA+203
+        { "PORTA_020b", null },               // Betrag nie negativ
+        { "PORTA_021",  Severity.Warning },   // BOSCH Pos.3+4 und MATHEIS ohne PRI
+        { "PORTA_021b", Severity.Warning },   // KleineWolke: nur PRI+AAA (kein AAB); MATHEIS
+        { "PORTA_022",  null },               // UNS+S immer vorhanden
+        { "PORTA_023",  Severity.Warning },   // MATHEIS hat kein MOA+77
+        { "PORTA_024",  Severity.Warning },   // MATHEIS hat kein MOA+79
+        { "PORTA_025",  null },               // MOA+125 immer vorhanden
+        { "PORTA_026",  null },               // MOA+124 immer vorhanden
+        { "PORTA_027",  null },               // MOA+77 immer > 0 (wenn vorhanden)
+        { "PORTA_028",  null },               // Rechnungsdatum nie vor Lieferdatum
+        { "PORTA_029",  Severity.Warning },   // COTTA: MOA+21 statt MOA+8; MONDEX: kein MOA+8 in ALC
+        { "PORTA_030",  Severity.Warning },   // BOSCH/NEFF: Header-ALC ohne PCD+3
+        { "PORTA_031",  Severity.Warning },   // AMICA, BIEDERLACK, MONDEX: Artikel-ALC ohne MOA+131
+
+        // ── Generic Warnings (already Warning by default) ─────────────────────
+        { "WARN_001", null }, { "WARN_002", null }, { "WARN_003", null }, { "WARN_004", null },
+
+        // ── ORDRSP ────────────────────────────────────────────────────────────
+        { "ORDRSP_SYN_006", null },
+        { "ORDRSP_001", null }, { "ORDRSP_002", null },
+        { "ORDRSP_003", Severity.Warning },   // GLOBO: DTM+4 statt DTM+137
+        { "ORDRSP_004", null }, { "ORDRSP_005", null }, { "ORDRSP_006", null },
+        { "ORDRSP_007", null },
+        { "ORDRSP_008", Severity.Warning },   // 20/21 Dateien: kein RFF+VA/FC
+        { "ORDRSP_009", Severity.Warning },   // BENFORMATO, GLOBO, INTERLINK: kein TAX+VAT
+        { "ORDRSP_010", null }, { "ORDRSP_011", null },
+        { "ORDRSP_012", Severity.Warning },   // BOENNINGHOFF: nur PIA+BP, keine SA
+        { "ORDRSP_013", null }, { "ORDRSP_014", null }, { "ORDRSP_014b", null },
+        { "ORDRSP_015", null },
+        { "ORDRSP_016", Severity.Warning },   // GLOBO, MAEUSBACHER, REALITY-LEUCHTEN, TRIOLEUCHTEN: kein PRI+AAA
+        { "ORDRSP_017", null },
+        { "ORDRSP_018", null }, { "ORDRSP_WARN_001", null },
+
+        // ── DESADV ────────────────────────────────────────────────────────────
+        { "DESADV_SYN_006", null },
+        { "DESADV_001", null }, { "DESADV_002", null }, { "DESADV_003", null },
+        { "DESADV_004", null }, { "DESADV_005", null }, { "DESADV_006", null },
+        { "DESADV_007", Severity.Warning },   // 21/21 Dateien: kein RFF+VA/FC (DESADV ist kein Steuerbeleg)
+        { "DESADV_008", null },
+        { "DESADV_009", Severity.Warning },   // DE-EEKHOORN, FLEXWELL, NORDLUX, ROBA: kein PAC
+        { "DESADV_010", null }, { "DESADV_011", null }, { "DESADV_011b", null },
+        { "DESADV_012", Severity.Warning },   // 7/21: DTM+79 auf Header-Ebene statt in LIN-Gruppe
+        { "DESADV_013", Severity.Warning },   // 7/21: DTM+76 auf Header-Ebene statt in LIN-Gruppe
+        { "DESADV_014", Severity.Warning },   // 14/21: RFF+DQ auf Header-Ebene oder fehlt in LIN-Gruppe
+        { "DESADV_016", Severity.Warning },   // 21/21 Dateien: kein UNS+S (DESADV endet direkt mit UNT)
+        { "DESADV_WARN_001", null }, { "DESADV_WARN_002", null }, { "DESADV_WARN_003", null },
+
+        // ── INVRPT ────────────────────────────────────────────────────────────
+        { "INVRPT_SYN_006", null },
+        { "INVRPT_001", null }, { "INVRPT_002", null }, { "INVRPT_003", null },
+        { "INVRPT_004", null }, { "INVRPT_005", null }, { "INVRPT_006", null },
+        { "INVRPT_007", null }, { "INVRPT_008", null }, { "INVRPT_008b", null },
+        { "INVRPT_009", null }, { "INVRPT_010", null },
+        { "INVRPT_WARN_002", null }, { "INVRPT_WARN_003", null },
     };
 }
