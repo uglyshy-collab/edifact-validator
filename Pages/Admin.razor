@@ -23,6 +23,7 @@
             @if (Store.IsAuthenticated)
             {
                 <span class="edi-controls-sep"></span>
+                <button class="btn btn-sm btn-outline-light" @onclick="() => _showCredForm = !_showCredForm">⚙ @L.De("admin.changePw")</button>
                 <button class="btn btn-sm btn-outline-light" @onclick="Store.Logout">@L.De("admin.logout")</button>
             }
         </div>
@@ -82,9 +83,11 @@
                 <button class="admin-tab @(_activeTab == "history" ? "active" : "")" @onclick="OpenHistory">@L.De("admin.tabHistory") @(_historyCount > 0 ? $"({_historyCount})" : "")</button>
             </div>
 
+            <ChangePasswordForm Visible="_showCredForm" OnClose="() => _showCredForm = false" />
+
             @if (_activeTab == "gln")
             {
-                <GlnTab ShowCredButton="true" />
+                <GlnTab />
             }
             else if (_activeTab == "rules")
             {
@@ -106,7 +109,8 @@
 </div>
 
 @code {
-    bool   _ready       = false;
+    bool   _ready         = false;
+    bool   _showCredForm  = false;
     string _theme       = "";
     string _loginUser   = "admin";
     string _loginPass   = "";

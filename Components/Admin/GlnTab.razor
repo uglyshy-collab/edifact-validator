@@ -26,32 +26,6 @@
     </div>
 }
 
-@* ── Password change form ── *@
-@if (_showCredForm)
-{
-    <div class="edi-card mb-3">
-        <div class="edi-card-header">@L.De("admin.changePw")</div>
-        <div class="p-3" style="display:flex;gap:1rem;flex-wrap:wrap;align-items:flex-end;">
-            <div>
-                <label class="admin-label">@L.De("admin.user")</label>
-                <input class="form-control form-control-sm admin-input" @bind="_newUser" />
-            </div>
-            <div>
-                <label class="admin-label">@L.De("admin.newPassword")</label>
-                <input type="password" class="form-control form-control-sm admin-input" @bind="_newPass" />
-            </div>
-            <div>
-                <label class="admin-label">@L.De("admin.confirmPassword")</label>
-                <input type="password" class="form-control form-control-sm admin-input" @bind="_newPass2" />
-            </div>
-            <button class="btn btn-sm btn-primary" @onclick="SaveCreds">@L.De("admin.save")</button>
-            <button class="btn btn-sm btn-outline-secondary" @onclick="() => _showCredForm = false">@L.De("admin.cancel")</button>
-            @if (_credMsg is not null)
-            { <span style="font-size:.8rem;color:#28a745;">@_credMsg</span> }
-        </div>
-    </div>
-}
-
 @* ── Edit / Add form ── *@
 @if (_editing is not null)
 {
@@ -139,27 +113,10 @@
     </div>
 </div>
 
-@* ── Change password button (shown when authenticated) ── *@
-@if (Store.IsAuthenticated && ShowCredButton)
-{
-    <div class="mt-2">
-        <button class="btn btn-sm btn-outline-secondary" @onclick="() => _showCredForm = !_showCredForm">
-            ⚙ @L.De("admin.changePw")
-        </button>
-    </div>
-}
-
 @code {
-    [Parameter] public bool ShowCredButton { get; set; }
-
     string _search      = "";
     string _filterGroup = "";
     bool   _confirmReset = false;
-    bool   _showCredForm = false;
-    string _newUser  = "";
-    string _newPass  = "";
-    string _newPass2 = "";
-    string? _credMsg = null;
     string? _editError = null;
     bool   _isNew = false;
     EditableEntry? _editing;
@@ -204,19 +161,6 @@
     {
         _confirmReset = false;
         await Store.ResetToDefaultsAsync();
-    }
-
-    async Task SaveCreds()
-    {
-        _credMsg = null;
-        if (string.IsNullOrWhiteSpace(_newUser) || string.IsNullOrWhiteSpace(_newPass))
-        { _credMsg = "Benutzername und Passwort dürfen nicht leer sein."; return; }
-        if (_newPass != _newPass2)
-        { _credMsg = "Passwörter stimmen nicht überein."; return; }
-        await Store.SaveCredentialsAsync(_newUser, _newPass);
-        _credMsg = "✓ Gespeichert";
-        _newPass = _newPass2 = "";
-        _showCredForm = false;
     }
 
     class EditableEntry
