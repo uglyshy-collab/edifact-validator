@@ -462,9 +462,9 @@ a:hover { color: #6a9dd3; }
 .theme-dark .edi-card      { background: #162230; border-color: #1e3447; }
 .theme-dark .edi-card-header { background: rgba(128,190,215,.1); border-color: #1e3447; color: #80bed7; }
 .theme-dark .party-card    { background: #162230; border-color: #1e3447; }
-.theme-dark .edi-table     { color: #c8dde8; border-color: #1e3447; }
-.theme-dark .edi-table thead th { background: rgba(128,190,215,.08); border-color: #1e3447; color: #80bed7; }
-.theme-dark .edi-table td  { border-color: #1e3447; }
+.theme-dark .edi-table     { color: #c8dde8 !important; border-color: #1e3447; --bs-table-color: #c8dde8; --bs-table-bg: transparent; }
+.theme-dark .edi-table thead th { background: rgba(128,190,215,.08); border-color: #1e3447; color: #80bed7 !important; }
+.theme-dark .edi-table td  { border-color: #1e3447; color: #c8dde8 !important; }
 .theme-dark .edi-table .row-error { background: #2a1515 !important; }
 .theme-dark .edi-table .row-warn  { background: #282210 !important; }
 .theme-dark .edi-table code { background: rgba(128,190,215,.12); color: #80bed7; }
@@ -646,6 +646,24 @@ a:hover { color: #6a9dd3; }
 .theme-dark .rules-subtab + .rules-subtab { border-color: #1e3447; }
 .theme-dark .rules-subtab:hover  { background: rgba(128,190,215,.08); }
 .theme-dark .rules-subtab.active { background: rgba(128,190,215,.15); }
+.theme-dark .rule-row-error   { background-color: transparent !important; color: #c8dde8; }
+.theme-dark .rule-row-warning { background-color: rgba(210,170,0,.07) !important; color: #c8dde8; }
+.theme-dark .rule-row-expandable:hover td { filter: brightness(1.12); }
+.theme-dark .sev-select-error,
+.theme-dark .sev-select-warning,
+.theme-dark .sev-select-default {
+    appearance: none; -webkit-appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath fill='%2380bed7' d='M6 8L0 0h12z'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right .5rem center;
+    background-size: .65rem;
+    padding-right: 1.6rem;
+}
+.theme-dark .sev-select-error   { background-color: #3d1818 !important; border-color: #7a3030; color: #f08080 !important; }
+.theme-dark .sev-select-warning { background-color: #2e2510 !important; border-color: #7a6020; color: #d4a840 !important; }
+.theme-dark .sev-select-default { background-color: #1a2e3d !important; border-color: #2a4a60; color: #90bdd0 !important; }
+.theme-dark .rule-detail-row.rule-row-error   .issue-detail-panel { border-left-color: #3a5a70; }
+.theme-dark .rule-detail-row.rule-row-warning .issue-detail-panel { border-left-color: #3a5020; }
 
 /* ── Rule config ── */
 .rule-disabled        { opacity: .45; }

@@ -348,7 +348,7 @@
                             <table class="table table-sm edi-table mb-0" style="table-layout:fixed;width:100%;">
                                 <thead>
                                     <tr>
-                                        <th style="width:100px">@L.De("admin.statsTimestamp")</th>
+                                        <th style="width:148px">@L.De("admin.statsTimestamp")</th>
                                         <th style="width:22%">@L.De("admin.historyFile")</th>
                                         <th style="width:70px">Typ</th>
                                         <th style="width:18%">@L.De("admin.statsSeller")</th>
@@ -364,7 +364,7 @@
                                     {
                                         var expanded = _expandedId == rec.Id;
                                         <tr class="@(!rec.IsValid ? "row-error" : "")">
-                                            <td style="font-size:.78rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">@rec.Timestamp</td>
+                                            <td style="font-size:.78rem;white-space:nowrap;">@rec.Timestamp</td>
                                             <td style="font-size:.78rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="@rec.FileName">@rec.FileName</td>
                                             <td><span class="badge bg-secondary" style="font-size:.68rem;">@(string.IsNullOrEmpty(rec.MessageType) ? "?" : rec.MessageType)</span></td>
                                             <td style="font-size:.78rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="@(rec.SellerName + (string.IsNullOrEmpty(rec.SellerGln) ? "" : " / " + rec.SellerGln))">
@@ -668,7 +668,7 @@
     async Task ToggleTheme()
     {
         _theme = _theme == "dark" ? "" : "dark";
-        await JS.InvokeVoidAsync("ls.set", "theme", _theme);
+        await JS.InvokeVoidAsync("setTheme", _theme == "dark");
     }
 
     async Task OpenHistory()

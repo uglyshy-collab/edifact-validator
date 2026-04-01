@@ -180,7 +180,7 @@
     async Task ToggleTheme()
     {
         _theme = _theme == "dark" ? "" : "dark";
-        await JS.InvokeVoidAsync("ls.set", "theme", _theme);
+        await JS.InvokeVoidAsync("setTheme", _theme == "dark");
     }
     public void Dispose() => L.Changed -= Refresh;
 

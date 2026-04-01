@@ -173,7 +173,10 @@
                 <div class="result-actions">
                     @if (!_isBatch)
                     {
-                        <button class="btn btn-sm btn-outline-secondary" @onclick="PrintReport">🖨 @L["report.print"]</button>
+                        <button class="btn btn-sm btn-outline-secondary" @onclick="PrintReport">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-.15em;margin-right:.3em;">
+                                <polyline points="6 9 6 2 18 2 18 9"/><rect x="6" y="14" width="12" height="8"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><circle cx="18" cy="11.5" r="1"/>
+                            </svg>@L["report.print"]</button>
                         <button class="btn btn-sm btn-outline-secondary" @onclick="DownloadReport">⬇ @L["report.download"]</button>
                     }
                     <button class="btn btn-sm btn-outline-secondary" @onclick="DownloadCsv">⬇ @L["report.downloadCsv"]</button>
@@ -232,7 +235,7 @@
                                                             {
                                                                 <tr class="@(issue.Severity == Severity.Error ? "row-error" : "row-warn")">
                                                                     <td><strong>@issue.SegmentTag</strong></td>
-                                                                    <td>@(issue.LineNumber > 0 ? issue.LineNumber.ToString() : "–")</td>
+                                                                    <td>@(issue.LineNumber > 1 ? issue.LineNumber.ToString() : "–")</td>
                                                                     <td><code>@issue.Code</code></td>
                                                                     <td>@L[issue.MessageKey]</td>
                                                                 </tr>
@@ -284,7 +287,7 @@
                                     <tbody>
                                         @foreach (var issue in _issues!.Where(i => i.Severity == Severity.Error))
                                         {
-                                            var canLink   = issue.LineNumber > 0;
+                                            var canLink   = issue.LineNumber > 1;
                                             var ln        = issue.LineNumber;
                                             var desc      = RuleDescriptions.Get(issue.Code);
                                             var expanded  = _expandedIssues.Contains(issue);
@@ -351,7 +354,7 @@
                                     <tbody>
                                         @foreach (var issue in _issues!.Where(i => i.Severity == Severity.Warning))
                                         {
-                                            var canLink   = issue.LineNumber > 0;
+                                            var canLink   = issue.LineNumber > 1;
                                             var ln        = issue.LineNumber;
                                             var desc      = RuleDescriptions.Get(issue.Code);
                                             var expanded  = _expandedIssues.Contains(issue);
@@ -546,7 +549,7 @@
                         <div class="p-2 seg-list">
                             @{
                                 var issuesByLine = _issues!
-                                    .Where(i => i.LineNumber > 0)
+                                    .Where(i => i.LineNumber >= 0)
                                     .GroupBy(i => i.LineNumber)
                                     .ToDictionary(g => g.Key, g => g.Max(i => i.Severity));
                             }
@@ -671,7 +674,7 @@
     async Task ToggleTheme()
     {
         _theme = _theme == "dark" ? "" : "dark";
-        await JS.InvokeVoidAsync("ls.set", "theme", _theme);
+        await JS.InvokeVoidAsync("setTheme", _theme == "dark");
     }
 
     void Reset()
@@ -911,7 +914,7 @@
             {
                 var cls = issue.Severity == Severity.Error ? "err" : "warn";
                 sb.Append($"<tr class='{cls}'><td><b>{System.Net.WebUtility.HtmlEncode(issue.SegmentTag)}</b></td>");
-                sb.Append($"<td>{(issue.LineNumber > 0 ? issue.LineNumber.ToString() : "–")}</td>");
+                sb.Append($"<td>{(issue.LineNumber > 1 ? issue.LineNumber.ToString() : "–")}</td>");
                 sb.Append($"<td>{System.Net.WebUtility.HtmlEncode(issue.ElementPosition)}</td>");
                 sb.Append($"<td><code>{issue.Code}</code></td>");
                 sb.Append($"<td>{System.Net.WebUtility.HtmlEncode(L[issue.MessageKey])}</td></tr>");
