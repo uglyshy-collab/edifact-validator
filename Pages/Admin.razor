@@ -3,6 +3,7 @@
 @inject HistoryService History
 @inject IJSRuntime JS
 @inject L10n L
+@inject NavigationManager Nav
 @using EdifactValidator.Services
 @implements IDisposable
 
@@ -10,7 +11,7 @@
 
 <div class="edi-app @(_theme == "dark" ? "theme-dark" : "")">
     <header class="edi-header">
-        <div class="edi-brand">
+        <div class="edi-brand" style="cursor:pointer;" @onclick='() => Nav.NavigateTo("/")'>
             <span class="edi-title">@L.De("app.title")</span>
             <span class="edi-subtitle"><span class="edi-subtitle-label">@ActiveTabLabel</span></span>
         </div>
@@ -343,18 +344,18 @@
                 {
                     <div class="edi-card">
                         <div class="edi-card-header">@L.De("admin.tabHistory") — @HistoryFiltered.Count() @L.De("admin.historyEntries")</div>
-                        <div class="table-responsive">
-                            <table class="table table-sm edi-table mb-0">
+                        <div>
+                            <table class="table table-sm edi-table mb-0" style="table-layout:fixed;width:100%;">
                                 <thead>
                                     <tr>
-                                        <th style="width:140px">@L.De("admin.statsTimestamp")</th>
-                                        <th>@L.De("admin.historyFile")</th>
-                                        <th style="width:80px">Typ</th>
-                                        <th>@L.De("admin.statsSeller")</th>
-                                        <th class="text-center">@L.De("admin.statsIsTest")</th>
-                                        <th class="text-end">@L.De("admin.statsErrors")</th>
-                                        <th class="text-end">@L.De("admin.statsWarnings")</th>
-                                        <th>@L.De("admin.statsStatus")</th>
+                                        <th style="width:100px">@L.De("admin.statsTimestamp")</th>
+                                        <th style="width:22%">@L.De("admin.historyFile")</th>
+                                        <th style="width:70px">Typ</th>
+                                        <th style="width:18%">@L.De("admin.statsSeller")</th>
+                                        <th class="text-center" style="width:36px">@L.De("admin.statsIsTest")</th>
+                                        <th class="text-end" style="width:44px">@L.De("admin.statsErrors")</th>
+                                        <th class="text-end" style="width:52px">@L.De("admin.statsWarnings")</th>
+                                        <th style="width:72px">@L.De("admin.statsStatus")</th>
                                         <th style="width:30px"></th>
                                     </tr>
                                 </thead>
@@ -363,10 +364,10 @@
                                     {
                                         var expanded = _expandedId == rec.Id;
                                         <tr class="@(!rec.IsValid ? "row-error" : "")">
-                                            <td style="font-size:.78rem;">@rec.Timestamp</td>
-                                            <td style="font-size:.78rem;white-space:nowrap;">@rec.FileName</td>
+                                            <td style="font-size:.78rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">@rec.Timestamp</td>
+                                            <td style="font-size:.78rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="@rec.FileName">@rec.FileName</td>
                                             <td><span class="badge bg-secondary" style="font-size:.68rem;">@(string.IsNullOrEmpty(rec.MessageType) ? "?" : rec.MessageType)</span></td>
-                                            <td style="font-size:.78rem;max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="@(rec.SellerName + (string.IsNullOrEmpty(rec.SellerGln) ? "" : " / " + rec.SellerGln))">
+                                            <td style="font-size:.78rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="@(rec.SellerName + (string.IsNullOrEmpty(rec.SellerGln) ? "" : " / " + rec.SellerGln))">
                                                 @(string.IsNullOrEmpty(rec.SellerName) ? rec.SellerGln : rec.SellerName)
                                             </td>
                                             <td class="text-center">@(rec.IsTest ? "🧪" : "")</td>
@@ -374,33 +375,41 @@
                                             <td class="text-end">@(rec.WarningCount > 0 ? rec.WarningCount.ToString() : "–")</td>
                                             <td><span class="badge @(rec.IsValid ? "bg-success" : "bg-danger")" style="font-size:.7rem;">@L[rec.IsValid ? "result.valid" : "result.invalid"]</span></td>
                                             <td>
-                                                @if (rec.Issues.Any())
+                                                @if (rec.ErrorCount > 0 || rec.WarningCount > 0)
                                                 {
                                                     <button class="btn btn-xs btn-outline-secondary" style="padding:0 4px;font-size:.7rem;"
-                                                            @onclick="() => _expandedId = expanded ? -1 : rec.Id">
+                                                            @onclick="() => ToggleExpand(rec.Id)">
                                                         @(expanded ? "▲" : "▼")
                                                     </button>
                                                 }
                                             </td>
                                         </tr>
-                                        @if (expanded && rec.Issues.Any())
+                                        @if (expanded)
                                         {
+                                            var issues = _expandedIssues;
                                             <tr>
                                                 <td colspan="9" style="background:#f8f8f8;padding:.5rem 1rem;">
-                                                    <table class="table table-sm mb-0" style="font-size:.76rem;">
-                                                        <thead><tr><th>Code</th><th>Segment</th><th>Zeile</th><th>Beschreibung</th></tr></thead>
-                                                        <tbody>
-                                                            @foreach (var issue in rec.Issues)
-                                                            {
-                                                                <tr class="@(issue.Severity == "Error" ? "row-error" : "row-warn")">
-                                                                    <td><code>@issue.Code</code></td>
-                                                                    <td>@issue.SegmentTag</td>
-                                                                    <td>@(issue.LineNumber > 0 ? issue.LineNumber.ToString() : "–")</td>
-                                                                    <td>@L[issue.MessageKey]</td>
-                                                                </tr>
-                                                            }
-                                                        </tbody>
-                                                    </table>
+                                                    @if (issues is null)
+                                                    {
+                                                        <div class="edi-spinner" style="padding:.5rem 0;"><div class="spinner-border spinner-border-sm" role="status"></div></div>
+                                                    }
+                                                    else
+                                                    {
+                                                        <table class="table table-sm mb-0" style="font-size:.76rem;">
+                                                            <thead><tr><th>Code</th><th>Segment</th><th>Zeile</th><th>Beschreibung</th></tr></thead>
+                                                            <tbody>
+                                                                @foreach (var issue in issues)
+                                                                {
+                                                                    <tr class="@(issue.Severity == "Error" ? "row-error" : "row-warn")">
+                                                                        <td><code>@issue.Code</code></td>
+                                                                        <td>@issue.SegmentTag</td>
+                                                                        <td>@(issue.LineNumber > 0 ? issue.LineNumber.ToString() : "–")</td>
+                                                                        <td>@L[issue.MessageKey]</td>
+                                                                    </tr>
+                                                                }
+                                                            </tbody>
+                                                        </table>
+                                                    }
                                                 </td>
                                             </tr>
                                         }
@@ -607,6 +616,7 @@
     bool    _hOnlyTest     = false;
     string  _hMsgType      = "";
     long    _expandedId    = -1;
+    List<IssueRecord>? _expandedIssues;
 
     IEnumerable<ValidationRecord> HistoryFiltered => (_history ?? Enumerable.Empty<ValidationRecord>())
         .Where(r =>
@@ -666,19 +676,29 @@
         _activeTab = "history";
         if (_history is null)
         {
-            _history = await History.GetRecentAsync(500);
+            _history = await History.GetRecentAsync();
             _historyCount = _history.Count;
         }
     }
 
     async Task ExportHistoryCsv() => await History.DownloadCsvAsync(JS);
 
+    async Task ToggleExpand(long id)
+    {
+        if (_expandedId == id) { _expandedId = -1; _expandedIssues = null; return; }
+        _expandedId     = id;
+        _expandedIssues = null;
+        StateHasChanged();
+        _expandedIssues = await History.GetIssuesAsync(id);
+    }
+
     async Task ClearHistory()
     {
         await History.ClearAsync();
-        _history      = new();
-        _historyCount = 0;
-        _expandedId   = -1;
+        _history        = new();
+        _historyCount   = 0;
+        _expandedId     = -1;
+        _expandedIssues = null;
     }
 
     void Refresh() => StateHasChanged();

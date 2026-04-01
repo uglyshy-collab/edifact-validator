@@ -101,14 +101,34 @@
 
             return {
                 async add(rec) {
+                    const MAX = 50;
                     const db = await openDb();
                     const r = Object.assign({}, rec);
                     if (!r.id) delete r.id; // let IndexedDB auto-generate the key
-                    return new Promise((res, rej) => {
+                    await new Promise((res, rej) => {
                         const t = db.transaction(STORE, 'readwrite');
                         t.oncomplete = res; t.onerror = e => rej(e.target.error);
                         t.objectStore(STORE).add(r);
                     });
+                    // Trim oldest entries so store never exceeds MAX
+                    const total = await new Promise((res, rej) => {
+                        const req = db.transaction(STORE, 'readonly').objectStore(STORE).count();
+                        req.onsuccess = e => res(e.target.result);
+                        req.onerror   = e => rej(e.target.error);
+                    });
+                    if (total > MAX) {
+                        await new Promise((res, rej) => {
+                            const t   = db.transaction(STORE, 'readwrite');
+                            const cur = t.objectStore(STORE).index('ts').openCursor(null, 'next');
+                            let toDelete = total - MAX;
+                            cur.onsuccess = e => {
+                                const c = e.target.result;
+                                if (c && toDelete > 0) { toDelete--; c.delete(); c.continue(); }
+                                else res();
+                            };
+                            cur.onerror = e => rej(e.target.error);
+                        });
+                    }
                 },
                 async getRecent(n) {
                     const db = await openDb();
@@ -118,10 +138,21 @@
                                       .index('ts').openCursor(null, 'prev');
                         cur.onsuccess = e => {
                             const c = e.target.result;
-                            if (c && out.length < n) { out.push(c.value); c.continue(); }
-                            else res(out);
+                            if (c && out.length < n) {
+                                const { issues, ...summary } = c.value; // strip issues from list
+                                out.push(summary);
+                                c.continue();
+                            } else res(out);
                         };
                         cur.onerror = e => rej(e.target.error);
+                    });
+                },
+                async getIssues(id) {
+                    const db = await openDb();
+                    return new Promise((res, rej) => {
+                        const r = db.transaction(STORE, 'readonly').objectStore(STORE).get(id);
+                        r.onsuccess = e => res(e.target.result?.issues ?? []);
+                        r.onerror   = e => rej(e.target.error);
                     });
                 },
                 async count() {

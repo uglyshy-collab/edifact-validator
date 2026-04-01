@@ -15,7 +15,7 @@
 
     @* ── Header ── *@
     <header class="edi-header">
-        <div class="edi-brand">
+        <div class="edi-brand" style="cursor:pointer;" @onclick="ResetToUpload">
             <span class="edi-title">@L["app.title"]</span>
             <span class="edi-subtitle">
                 <span class="edi-subtitle-label">Porta IT</span>
@@ -53,6 +53,14 @@
 
         @if (_state == AppState.Upload)
         {
+            @if (_isReading)
+            {
+                <div class="edi-spinner">
+                    <div class="spinner-border" role="status" style="width:3rem;height:3rem;"></div>
+                    <p class="mt-3">@L["upload.reading"]</p>
+                </div>
+            }
+            <div style="@(_isReading ? "display:none" : "")">
             <div class="upload-section">
                 <h2>@L["upload.title"]</h2>
                 <p class="subtitle">@L["upload.subtitle"]</p>
@@ -125,6 +133,7 @@
                     </div>
                     <InputFile id="edi-file-input" OnChange="OnFileSelected" accept=".edi,.txt" class="upload-input-overlay" multiple />
                 </div>
+            </div>
             </div>
         }
         else if (_state == AppState.Processing)
@@ -611,6 +620,7 @@
     string                 _resultTab        = "report";
     HashSet<int>           _expandedSegs     = new();
     HashSet<ValidationIssue> _expandedIssues = new();
+    bool                   _isReading        = false;
     // Batch mode
     bool                   _isBatch          = false;
     List<BatchResult>?     _batchResults;
@@ -650,6 +660,14 @@
     }
 
     void Refresh() => StateHasChanged();
+
+    void ResetToUpload()
+    {
+        _state      = AppState.Upload;
+        _interchange = null;
+        _issues     = null;
+        _batchResults = null;
+    }
     async Task ToggleTheme()
     {
         _theme = _theme == "dark" ? "" : "dark";
@@ -678,8 +696,11 @@
         if (files.Count == 0) return;
 
         _parseError = null;
+        _isReading  = true;
+        StateHasChanged();
+        await Task.Yield(); // UI aktualisieren bevor das Einlesen beginnt
 
-        // Datei vollständig lesen BEVOR StateHasChanged() das InputFile aus dem DOM entfernt
+        // Dateien vollständig lesen (InputFile bleibt via display:none im DOM)
         var fileData = new List<(string Name, string Text)>();
         foreach (var file in files)
         {
@@ -691,11 +712,12 @@
             }
             catch (Exception ex)
             {
-                if (files.Count == 1) { _parseError = ex.Message; return; }
+                if (files.Count == 1) { _parseError = ex.Message; _isReading = false; return; }
                 // batch: skip unreadable files silently
             }
         }
 
+        _isReading = false;
         if (fileData.Count == 0) return;
 
         _state = AppState.Processing;
@@ -910,24 +932,24 @@
         var sb = new System.Text.StringBuilder();
         if (_isBatch)
         {
-            sb.AppendLine("\"Dateiname\";\"Typ\";\"Gültig\";\"Fehler\";\"Warnungen\"");
+            sb.AppendLine($"\"{L["admin.historyFile"]}\";\"{L["csv.type"]}\";\"{L["result.valid"]}\";\"{L["result.errors"]}\";\"{L["result.warnings"]}\"");
             foreach (var r in _batchResults!)
             {
-                var valid = r.IsValid ? "Ja" : "Nein";
+                var valid = r.IsValid ? L["csv.yes"] : L["csv.no"];
                 sb.AppendLine($"\"{r.FileName}\";\"{r.MessageType}\";\"{valid}\";{r.ErrorCount};{r.WarnCount}");
             }
-            await JS.InvokeVoidAsync("downloadFile", $"batch_{DateTime.Now:yyyyMMdd_HHmm}.csv", sb.ToString(), "text/csv;charset=utf-8");
+            await JS.InvokeVoidAsync("downloadFile", $"{L["csv.batchFile"]}_{DateTime.Now:yyyyMMdd_HHmm}.csv", sb.ToString(), "text/csv;charset=utf-8");
         }
         else
         {
-            sb.AppendLine("\"Schweregrad\";\"Segment\";\"Zeile\";\"Position\";\"Code\";\"Beschreibung\"");
+            sb.AppendLine($"\"{L["csv.severity"]}\";\"{L["report.seg"]}\";\"{L["report.line"]}\";\"{L["report.position"]}\";\"{L["report.code"]}\";\"{L["report.description"]}\"");
             foreach (var issue in _issues!)
             {
-                var sev = issue.Severity == Severity.Error ? "Fehler" : "Warnung";
+                var sev  = issue.Severity == Severity.Error ? L["result.errors"] : L["result.warnings"];
                 var desc = L[issue.MessageKey].Replace("\"", "\"\"");
                 sb.AppendLine($"\"{sev}\";\"{issue.SegmentTag}\";{issue.LineNumber};\"{issue.ElementPosition}\";\"{issue.Code}\";\"{desc}\"");
             }
-            var name = $"bericht_{System.IO.Path.GetFileNameWithoutExtension(_fileName)}_{DateTime.Now:yyyyMMdd_HHmm}.csv";
+            var name = $"{L["csv.reportFile"]}_{System.IO.Path.GetFileNameWithoutExtension(_fileName)}_{DateTime.Now:yyyyMMdd_HHmm}.csv";
             await JS.InvokeVoidAsync("downloadFile", name, sb.ToString(), "text/csv;charset=utf-8");
         }
     }

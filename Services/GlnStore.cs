@@ -1,6 +1,7 @@
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using Microsoft.Extensions.Configuration;
 using Microsoft.JSInterop;
 using EdifactValidator.Models;
 
@@ -21,13 +22,18 @@ public class GlnStore
     public Dictionary<string, RuleConfig> Rules { get; private set; } = new();
     public ValidationStats Stats { get; private set; } = new();
 
-    private string _credUser     = "admin";
-    private string _credPassword = HashPassword("porta2024"); // stored as SHA-256 hex
+    private string _credUser;
+    private string _credPassword; // stored as SHA-256 hex
 
     private static string HashPassword(string pw) =>
         Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(pw))).ToLowerInvariant();
 
-    public GlnStore(IJSRuntime js) => _js = js;
+    public GlnStore(IJSRuntime js, IConfiguration config)
+    {
+        _js          = js;
+        _credUser     = config["Admin:DefaultUser"]     ?? "admin";
+        _credPassword = HashPassword(config["Admin:DefaultPassword"] ?? "porta2024");
+    }
 
     public async Task InitAsync()
     {

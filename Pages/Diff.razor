@@ -1,6 +1,7 @@
 @page "/diff"
 @inject L10n L
 @inject IJSRuntime JS
+@inject NavigationManager Nav
 @implements IDisposable
 
 <PageTitle>@L["app.title"] — @L["diff.subtitle"]</PageTitle>
@@ -8,7 +9,7 @@
 <div class="edi-app @(_theme == "dark" ? "theme-dark" : "")">
 
     <header class="edi-header">
-        <div class="edi-brand">
+        <div class="edi-brand" style="cursor:pointer;" @onclick='() => Nav.NavigateTo("/")'>
             <span class="edi-title">@L["app.title"]</span>
             <span class="edi-subtitle"><span class="edi-subtitle-label">@L["diff.subtitle"]</span></span>
         </div>

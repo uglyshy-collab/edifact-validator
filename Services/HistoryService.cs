@@ -20,13 +20,25 @@ public class HistoryService
         await _js.InvokeVoidAsync("idb.add", el);
     }
 
-    public async Task<List<ValidationRecord>> GetRecentAsync(int limit = 500)
+    public async Task<List<ValidationRecord>> GetRecentAsync(int limit = 50)
     {
         var el   = await _js.InvokeAsync<JsonElement>("idb.getRecent", limit);
         var list = new List<ValidationRecord>();
         foreach (var item in el.EnumerateArray())
         {
             var rec = JsonSerializer.Deserialize<ValidationRecord>(item.GetRawText(), _nocase);
+            if (rec is not null) list.Add(rec);
+        }
+        return list;
+    }
+
+    public async Task<List<IssueRecord>> GetIssuesAsync(long id)
+    {
+        var el   = await _js.InvokeAsync<JsonElement>("idb.getIssues", id);
+        var list = new List<IssueRecord>();
+        foreach (var item in el.EnumerateArray())
+        {
+            var rec = JsonSerializer.Deserialize<IssueRecord>(item.GetRawText(), _nocase);
             if (rec is not null) list.Add(rec);
         }
         return list;
