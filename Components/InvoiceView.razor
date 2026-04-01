@@ -1,0 +1,210 @@
+@inject L10n L
+
+@* ── GLN comparison ── *@
+<div class="edi-card">
+    <div class="edi-card-header">@L["gln.comparison"]</div>
+    @if (SelectedEntry is { } glnSel)
+    {
+        <div class="table-responsive">
+            <table class="table table-sm edi-table mb-0">
+                <thead>
+                    <tr>
+                        <th>@L["gln.segment"]</th>
+                        <th>@L["gln.expectedCol"]</th>
+                        <th>@L["gln.found"]</th>
+                        <th>@L["gln.result"]</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @GlnRow("NAD+BY", L["invoice.buyer"],    glnSel.GlnBy, Invoice?.Buyer?.Gln)
+                    @if (!string.IsNullOrEmpty(glnSel.GlnIv))
+                    { @GlnRow("NAD+IV", L["invoice.invoicee"], glnSel.GlnIv, Invoice?.Invoicee?.Gln) }
+                    @if (!string.IsNullOrEmpty(glnSel.GlnDp))
+                    { @GlnRow("NAD+DP", L["invoice.delivery"], glnSel.GlnDp, Invoice?.DeliveryParty?.Gln) }
+                </tbody>
+            </table>
+        </div>
+    }
+    else
+    {
+        <p class="p-3 mb-0" style="font-size:.88rem;color:#888;">@L["gln.noMatch"]</p>
+    }
+</div>
+
+@* ── Invoice content ── *@
+@if (Invoice is not null)
+{
+    <div class="edi-card">
+        <div class="edi-card-header">@L["invoice.title"]</div>
+        <div class="info-grid">
+            <div class="info-item"><span class="info-label">@L["invoice.version"]</span><span>@Invoice.EdifactVersion</span></div>
+            <div class="info-item"><span class="info-label">bgm</span><span>@Invoice.InvoiceId</span></div>
+            <div class="info-item"><span class="info-label">@L["invoice.issueDate"]</span><span>@FmtDate(Invoice.IssueDate)</span></div>
+            <div class="info-item"><span class="info-label">@L["invoice.delivDate"]</span><span>@FmtDate(Invoice.DeliveryDate)</span></div>
+            <div class="info-item"><span class="info-label">@L["invoice.currency"]</span><span>@Invoice.CurrencyCode</span></div>
+            <div class="info-item"><span class="info-label">@L["invoice.orderNo"]</span><span>@NullSafe(Invoice.OrderNumber)</span></div>
+            <div class="info-item"><span class="info-label">@L["invoice.delivNote"]</span><span>@NullSafe(Invoice.DeliveryNote)</span></div>
+            <div class="info-item"><span class="info-label">@L["invoice.custNo"]</span><span>@NullSafe(Invoice.CustomerNumber)</span></div>
+        </div>
+    </div>
+
+    <div class="party-grid">
+        @RenderParty(Invoice.Seller,         L["invoice.seller"])
+        @RenderParty(Invoice.Buyer,          L["invoice.buyer"])
+        @if (Invoice.DeliveryParty is not null)
+        { @RenderParty(Invoice.DeliveryParty, L["invoice.delivery"]) }
+        @if (Invoice.Invoicee is not null)
+        { @RenderParty(Invoice.Invoicee,      L["invoice.invoicee"]) }
+    </div>
+
+    @if (Invoice.Lines.Any())
+    {
+        <div class="edi-card">
+            <div class="edi-card-header">@L["invoice.positions"]</div>
+            <div class="table-responsive">
+                <table class="table table-sm edi-table mb-0">
+                    <thead>
+                        <tr>
+                            <th>@L["invoice.pos"]</th>
+                            <th>@L["invoice.gtin"]</th>
+                            <th>@L["invoice.description"]</th>
+                            <th class="text-end">@L["invoice.quantity"]</th>
+                            <th class="text-end">@L["invoice.unitPrice"]</th>
+                            <th class="text-end">@L["invoice.total"]</th>
+                            <th class="text-end">@L["invoice.tax"] %</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var ln in Invoice.Lines)
+                        {
+                            <tr>
+                                <td>@ln.LineId</td>
+                                <td style="font-size:.76rem;color:#80bed7">@ln.Gtin</td>
+                                <td>@ln.Description</td>
+                                <td class="text-end">@ln.Quantity.ToString("N3") @ln.UnitCode</td>
+                                <td class="text-end">@ln.UnitPrice.ToString("N2")</td>
+                                <td class="text-end">@ln.LineTotal.ToString("N2")</td>
+                                <td class="text-end">@ln.TaxPercent.ToString("N1")</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    }
+
+    <div class="two-col">
+        @if (Invoice.TaxLines.Any())
+        {
+            <div class="edi-card">
+                <div class="edi-card-header">@L["invoice.taxTitle"]</div>
+                <div class="table-responsive">
+                    <table class="table table-sm edi-table mb-0">
+                        <thead>
+                            <tr>
+                                <th>@L["invoice.taxRate"]</th>
+                                <th class="text-end">@L["invoice.taxBasis"]</th>
+                                <th class="text-end">@L["invoice.taxAmount"]</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var t in Invoice.TaxLines)
+                            {
+                                <tr>
+                                    <td>@t.TaxPercent.ToString("N1") %</td>
+                                    <td class="text-end">@t.TaxableAmount.ToString("N2") @Invoice.CurrencyCode</td>
+                                    <td class="text-end">@t.TaxAmount.ToString("N2") @Invoice.CurrencyCode</td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        }
+        <div class="edi-card">
+            <div class="edi-card-header">@L["invoice.totalsTitle"]</div>
+            <table class="table table-sm edi-table mb-0">
+                <tbody>
+                    <tr>
+                        <td>@L["invoice.lineItems"]</td>
+                        <td class="text-end">@Invoice.Totals.LineItemsTotal.ToString("N2") @Invoice.CurrencyCode</td>
+                    </tr>
+                    <tr>
+                        <td>@L["invoice.taxTotal"]</td>
+                        <td class="text-end">@Invoice.Totals.TaxAmount.ToString("N2") @Invoice.CurrencyCode</td>
+                    </tr>
+                    <tr style="font-weight:600">
+                        <td>@L["invoice.payable"]</td>
+                        <td class="text-end">@Invoice.Totals.TotalAmount.ToString("N2") @Invoice.CurrencyCode</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter] public InvoiceData? Invoice { get; set; }
+    [Parameter] public GlnEntry? SelectedEntry { get; set; }
+
+    RenderFragment RenderParty(InvoiceParty p, string title) => __builder =>
+    {
+        <div class="party-card">
+            <div class="party-card-header">@title</div>
+            <div class="party-card-body">
+                @if (!string.IsNullOrWhiteSpace(p.Gln))
+                { <div><span class="info-label">gln</span> @p.Gln</div> }
+                @if (!string.IsNullOrWhiteSpace(p.Name))
+                { <div style="font-weight:600">@p.Name</div> }
+                @if (!string.IsNullOrWhiteSpace(p.Street))
+                { <div>@p.Street</div> }
+                @if (!string.IsNullOrWhiteSpace(p.PostalCode) || !string.IsNullOrWhiteSpace(p.City))
+                { <div>@p.PostalCode @p.City</div> }
+                @if (!string.IsNullOrWhiteSpace(p.Country))
+                { <div>@p.Country</div> }
+                @if (!string.IsNullOrWhiteSpace(p.VatId))
+                { <div><span class="info-label">@L["invoice.vatId"]</span> @p.VatId</div> }
+                @if (!string.IsNullOrWhiteSpace(p.TaxNumber))
+                { <div><span class="info-label">@L["invoice.taxNo"]</span> @p.TaxNumber</div> }
+            </div>
+        </div>
+    };
+
+    RenderFragment GlnRow(string segment, string desc, string expected, string? found) => __builder =>
+    {
+        bool ok       = !string.IsNullOrEmpty(found) && found == expected;
+        bool chkFound = !string.IsNullOrEmpty(found) && GlnHelper.IsValid(found);
+        bool chkExp   = !string.IsNullOrEmpty(expected) && GlnHelper.IsValid(expected);
+        <tr class="@(ok ? "" : "row-error")">
+            <td>
+                <code>@segment</code>
+                <div style="font-size:.72rem;color:#80bed7;margin-top:.1rem;">@desc</div>
+            </td>
+            <td>
+                <small>@(string.IsNullOrEmpty(expected) ? L["gln.notSet"] : expected)</small>
+                @if (!string.IsNullOrEmpty(expected))
+                {
+                    <span class="gln-check-badge @(chkExp ? "gln-check-ok" : "gln-check-fail")">
+                        @(chkExp ? L["gln.checkOk"] : L["gln.checkFail"])
+                    </span>
+                }
+            </td>
+            <td>
+                <small>@(string.IsNullOrEmpty(found) ? L["gln.notSet"] : found)</small>
+                @if (!string.IsNullOrEmpty(found))
+                {
+                    <span class="gln-check-badge @(chkFound ? "gln-check-ok" : "gln-check-fail")">
+                        @(chkFound ? L["gln.checkOk"] : L["gln.checkFail"])
+                    </span>
+                }
+            </td>
+            <td>@(ok ? L["gln.ok"] : L["gln.mismatch"])</td>
+        </tr>
+    };
+
+    static string FmtDate(DateOnly d) =>
+        d == DateOnly.MinValue ? "–" : d.ToString("dd.MM.yyyy");
+
+    static string NullSafe(string? s) =>
+        string.IsNullOrWhiteSpace(s) ? "–" : s;
+}

@@ -1,0 +1,146 @@
+@using EdifactValidator.Services
+@inject L10n L
+
+@* ── Errors ── *@
+<div class="edi-card">
+    <div class="edi-card-header">@L["report.title"]</div>
+    @if (!Issues.Any(i => !IsRecommendation(i.Code)))
+    {
+        <p class="p-3 mb-0" style="color:#28a745;font-size:.88rem;">✓ @L["report.noIssues"]</p>
+    }
+    else
+    {
+        <div class="table-responsive">
+            <table class="table table-sm edi-table mb-0">
+                <thead>
+                    <tr>
+                        <th>@L["report.seg"]</th>
+                        <th>@L["report.line"]</th>
+                        <th>@L["report.position"]</th>
+                        <th>@L["report.code"]</th>
+                        <th>@L["report.description"]</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var issue in Issues.Where(i => i.Severity == Severity.Error))
+                    {
+                        var canLink  = issue.LineNumber > 1;
+                        var ln       = issue.LineNumber;
+                        var desc     = RuleDescriptions.Get(issue.Code);
+                        var expanded = _expandedIssues.Contains(issue);
+                        <tr class="row-error @(desc != null ? "report-row-expandable" : "")"
+                            @onclick="() => { if (desc != null) Toggle(issue); }">
+                            <td><strong>@issue.SegmentTag</strong></td>
+                            <td>
+                                @if (canLink)
+                                {
+                                    <button class="seg-jump-btn" title="@L["report.jumpToSeg"]"
+                                            @onclick:stopPropagation="true"
+                                            @onclick="async () => await OnGoToSegment.InvokeAsync(ln)">@ln ↗</button>
+                                }
+                                else { <span>–</span> }
+                            </td>
+                            <td><small>@(string.IsNullOrEmpty(issue.ElementPosition) ? "–" : issue.ElementPosition)</small></td>
+                            <td>
+                                <code>@issue.Code</code>
+                                @if (desc != null) { <span class="issue-info-icon">@(expanded ? "▲" : "▼")</span> }
+                            </td>
+                            <td>@L[issue.MessageKey]</td>
+                        </tr>
+                        @if (expanded && desc != null)
+                        {
+                            <tr class="issue-detail-row row-error">
+                                <td colspan="5">
+                                    <div class="issue-detail-panel">
+                                        <p>@desc.Detail</p>
+                                        @if (desc.Example != null) { <pre class="issue-example">@desc.Example</pre> }
+                                    </div>
+                                </td>
+                            </tr>
+                        }
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+</div>
+
+@* ── Empfehlungen ── *@
+<div class="edi-card">
+    <div class="edi-card-header" style="color:#c8940a;">@L["report.recommendations"]</div>
+    @if (!Issues.Any(i => i.Severity == Severity.Warning))
+    {
+        <p class="p-3 mb-0" style="color:#5a8fa8;font-size:.88rem;">@L["report.noRecs"]</p>
+    }
+    else
+    {
+        <div class="table-responsive">
+            <table class="table table-sm edi-table mb-0">
+                <thead>
+                    <tr>
+                        <th>@L["report.seg"]</th>
+                        <th>@L["report.line"]</th>
+                        <th>@L["report.position"]</th>
+                        <th>@L["report.code"]</th>
+                        <th>@L["report.description"]</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var issue in Issues.Where(i => i.Severity == Severity.Warning))
+                    {
+                        var canLink  = issue.LineNumber > 1;
+                        var ln       = issue.LineNumber;
+                        var desc     = RuleDescriptions.Get(issue.Code);
+                        var expanded = _expandedIssues.Contains(issue);
+                        <tr class="row-warn @(desc != null ? "report-row-expandable" : "")"
+                            @onclick="() => { if (desc != null) Toggle(issue); }">
+                            <td><strong>@issue.SegmentTag</strong></td>
+                            <td>
+                                @if (canLink)
+                                {
+                                    <button class="seg-jump-btn" title="@L["report.jumpToSeg"]"
+                                            @onclick:stopPropagation="true"
+                                            @onclick="async () => await OnGoToSegment.InvokeAsync(ln)">@ln ↗</button>
+                                }
+                                else { <span>–</span> }
+                            </td>
+                            <td><small>@(string.IsNullOrEmpty(issue.ElementPosition) ? "–" : issue.ElementPosition)</small></td>
+                            <td>
+                                <code>@issue.Code</code>
+                                @if (desc != null) { <span class="issue-info-icon">@(expanded ? "▲" : "▼")</span> }
+                            </td>
+                            <td>@L[issue.MessageKey]</td>
+                        </tr>
+                        @if (expanded && desc != null)
+                        {
+                            <tr class="issue-detail-row row-warn">
+                                <td colspan="5">
+                                    <div class="issue-detail-panel">
+                                        <p>@desc.Detail</p>
+                                        @if (desc.Example != null) { <pre class="issue-example">@desc.Example</pre> }
+                                    </div>
+                                </td>
+                            </tr>
+                        }
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter, EditorRequired] public List<ValidationIssue> Issues { get; set; } = new();
+    [Parameter] public EventCallback<int> OnGoToSegment { get; set; }
+
+    HashSet<ValidationIssue> _expandedIssues = new();
+
+    void Toggle(ValidationIssue issue)
+    {
+        if (!_expandedIssues.Remove(issue)) _expandedIssues.Add(issue);
+    }
+
+    static bool IsRecommendation(string code) =>
+        code.StartsWith("WARN_") || code.StartsWith("ORDRSP_WARN_") ||
+        code.StartsWith("DESADV_WARN_") || code.StartsWith("INVRPT_WARN_");
+}

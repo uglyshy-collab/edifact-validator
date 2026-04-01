@@ -99,20 +99,16 @@ public class DesadvValidator : ValidatorBase
 
     private void ValidateLineItems(EdifactMessage msg)
     {
-        var linSegs = msg.Segments.Where(s => s.Tag == "LIN").ToList();
+        var linGroups = GroupByLeader(msg, "LIN").ToList();
 
-        if (!linSegs.Any())
+        if (linGroups.Count == 0)
         {
             Err("LIN", 0, 0, "", "DESADV_010", "desadv.010.none");
             return;
         }
 
-        foreach (var lin in linSegs)
+        foreach (var (lin, group) in linGroups)
         {
-            var linIdx    = msg.Segments.IndexOf(lin);
-            var nextLin   = msg.Segments.Skip(linIdx + 1).FirstOrDefault(s => s.Tag == "LIN");
-            var nextLinIdx = nextLin is not null ? msg.Segments.IndexOf(nextLin) : msg.Segments.Count;
-            var group     = msg.Segments.Skip(linIdx).Take(nextLinIdx - linIdx).ToList();
 
             // DESADV_010 — GTIN (LIN DE3.C1, Qualifier EN)
             var gtin = lin.Comp(3, 1);

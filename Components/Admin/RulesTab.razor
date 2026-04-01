@@ -1,0 +1,187 @@
+@inject L10n L
+@inject GlnStore Store
+
+<div class="result-toolbar admin-toolbar" style="margin-bottom:.5rem;">
+    <div class="rules-subtabs">
+        <button class="rules-subtab @(_rulesSubTab == "invoic"  ? "active" : "")" @onclick='() => _rulesSubTab = "invoic"'>INVOIC</button>
+        <button class="rules-subtab @(_rulesSubTab == "ordrsp"  ? "active" : "")" @onclick='() => _rulesSubTab = "ordrsp"'>ORDRSP</button>
+        <button class="rules-subtab @(_rulesSubTab == "desadv"  ? "active" : "")" @onclick='() => _rulesSubTab = "desadv"'>DESADV</button>
+        <button class="rules-subtab @(_rulesSubTab == "invrpt"  ? "active" : "")" @onclick='() => _rulesSubTab = "invrpt"'>INVRPT</button>
+    </div>
+    <div style="display:flex;gap:.5rem;margin-left:auto;">
+        <button class="btn btn-sm btn-outline-secondary" @onclick="EnableAllRules">@L.De("admin.enableAll")</button>
+        <button class="btn btn-sm btn-outline-secondary" @onclick="ResetRules">↺ @L.De("admin.ruleResetAll")</button>
+    </div>
+</div>
+
+@foreach (var group in ActiveRuleGroups)
+{
+    <div class="edi-card mb-3">
+        <div class="edi-card-header">@group.Key</div>
+        <div class="table-responsive">
+            <table class="table table-sm edi-table mb-0">
+                <thead>
+                    <tr>
+                        <th style="width:120px">@L.De("admin.ruleCode")</th>
+                        <th>@L.De("admin.ruleDesc")</th>
+                        <th style="width:90px">@L.De("admin.ruleDefault")</th>
+                        <th style="width:80px">@L.De("admin.ruleEnabled")</th>
+                        <th style="width:120px">@L.De("admin.ruleSeverity")</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var ruleCode in group.Value)
+                    {
+                        var cfg      = Store.Rules.TryGetValue(ruleCode, out var c) ? c : new RuleConfig { Code = ruleCode };
+                        var defSev   = DefaultSeverity(ruleCode);
+                        var effSev   = cfg.Override ?? defSev;
+                        var rowBg    = !cfg.Enabled ? "rule-disabled" : effSev == Severity.Error ? "rule-row-error" : effSev == Severity.Warning ? "rule-row-warning" : "";
+                        var detail   = RuleDescriptions.Get(ruleCode);
+                        var expanded = _expandedRules.Contains(ruleCode);
+                        <tr class="@rowBg @(detail != null ? "rule-row-expandable" : "")"
+                            @onclick="() => { if (detail != null) ToggleRuleDetail(ruleCode); }">
+                            <td><code style="font-size:.75rem;">@ruleCode</code></td>
+                            <td style="font-size:.82rem;">
+                                @L.De(RuleMsgKey(ruleCode))
+                                @if (detail != null)
+                                {
+                                    <span class="issue-info-icon">@(expanded ? "▲" : "▼")</span>
+                                }
+                            </td>
+                            <td><span class="badge @(defSev == Severity.Error ? "bg-danger" : "bg-warning text-dark")" style="font-size:.7rem;">@defSev</span></td>
+                            <td @onclick:stopPropagation="true">
+                                <div class="form-check form-switch mb-0">
+                                    <input class="form-check-input" type="checkbox" checked="@cfg.Enabled"
+                                           @onchange="e => ToggleRule(ruleCode, (bool)(e.Value ?? true))" />
+                                </div>
+                            </td>
+                            <td @onclick:stopPropagation="true">
+                                <select class="form-select form-select-sm sev-select-@(cfg.Override.HasValue ? cfg.Override.Value.ToString().ToLower() : "default")" style="font-size:.75rem;min-width:7.5rem;"
+                                        value="@(cfg.Override.HasValue ? cfg.Override.Value.ToString() : "")"
+                                        @onchange="e => SetSeverityOverride(ruleCode, e.Value?.ToString())">
+                                    <option value="">@L.De("admin.ruleDefault")</option>
+                                    <option value="Error">Fehler</option>
+                                    <option value="Warning">Warnung</option>
+                                </select>
+                            </td>
+                        </tr>
+                        @if (expanded && detail != null)
+                        {
+                            <tr class="rule-detail-row @rowBg">
+                                <td colspan="5">
+                                    <div class="issue-detail-panel">
+                                        <p>@detail.Detail</p>
+                                        @if (detail.Example != null)
+                                        {
+                                            <pre class="issue-example">@detail.Example</pre>
+                                        }
+                                    </div>
+                                </td>
+                            </tr>
+                        }
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+}
+
+@code {
+    string _rulesSubTab = "invoic";
+    HashSet<string> _expandedRules = new();
+
+    Dictionary<string, List<string>> ActiveRuleGroups =>
+        _rulesSubTab == "ordrsp" ? OrdrspRuleGroups :
+        _rulesSubTab == "desadv" ? DesadvRuleGroups :
+        _rulesSubTab == "invrpt" ? InvrptRuleGroups :
+        InvoicRuleGroups;
+
+    static Severity DefaultSeverity(string code) =>
+        code.StartsWith("WARN_") || code.StartsWith("ORDRSP_WARN_") ||
+        code.StartsWith("DESADV_WARN_") || code.StartsWith("INVRPT_WARN_")
+            ? Severity.Warning : Severity.Error;
+
+    void ToggleRuleDetail(string code)
+    {
+        if (!_expandedRules.Remove(code)) _expandedRules.Add(code);
+    }
+
+    async Task ToggleRule(string code, bool enabled)
+    {
+        Store.Rules[code] = (Store.Rules.TryGetValue(code, out var r) ? r : new RuleConfig { Code = code })
+            with { Enabled = enabled };
+        await Store.SaveRulesAsync();
+    }
+
+    async Task SetSeverityOverride(string code, string? val)
+    {
+        Severity? sev = val switch { "Error" => Severity.Error, "Warning" => Severity.Warning, _ => null };
+        Store.Rules[code] = (Store.Rules.TryGetValue(code, out var r) ? r : new RuleConfig { Code = code })
+            with { Override = sev };
+        await Store.SaveRulesAsync();
+    }
+
+    async Task EnableAllRules()
+    {
+        foreach (var key in Store.Rules.Keys.ToList())
+            Store.Rules[key] = Store.Rules[key] with { Enabled = true };
+        await Store.SaveRulesAsync();
+    }
+
+    async Task ResetRules() => await Store.ResetRulesAsync();
+
+    static string RuleMsgKey(string code) => code switch
+    {
+        "SYN_001"   => "syn.001",  "SYN_002"  => "syn.002",  "SYN_003"  => "syn.003",
+        "SYN_004"   => "syn.004",  "SYN_005"  => "syn.005",  "SYN_005b" => "syn.005b",
+        "SYN_006"   => "syn.006",
+        "PORTA_001" => "porta.001","PORTA_001b"=> "porta.001b","PORTA_002"=> "porta.002",
+        "PORTA_003" => "porta.003","PORTA_004" => "porta.004","PORTA_005" => "porta.005",
+        "PORTA_006" => "porta.006","PORTA_007" => "porta.007","PORTA_008" => "porta.008",
+        "PORTA_009" => "porta.009","PORTA_010" => "porta.010","PORTA_011" => "porta.011",
+        "PORTA_012" => "porta.012","PORTA_013" => "porta.013","PORTA_014" => "porta.014",
+        "PORTA_015" => "porta.015","PORTA_016" => "porta.016","PORTA_017" => "porta.017",
+        "PORTA_018" => "porta.018","PORTA_019" => "porta.019","PORTA_019b"=> "porta.019b",
+        "PORTA_020" => "porta.020","PORTA_020b"=> "porta.020b","PORTA_021"=> "porta.021",
+        "PORTA_021b"=> "porta.021b","PORTA_022"=> "porta.022","PORTA_023" => "porta.023",
+        "PORTA_024" => "porta.024","PORTA_025" => "porta.025","PORTA_026" => "porta.026",
+        "PORTA_027" => "porta.027","PORTA_028" => "porta.028","PORTA_029" => "porta.029",
+        "PORTA_030" => "porta.030","PORTA_031" => "porta.031",
+        "WARN_001"  => "warn.001", "WARN_002"  => "warn.002",
+        "WARN_003"  => "warn.003", "WARN_004"  => "warn.004",
+        _ => code.ToLower().Replace("_", ".")
+    };
+
+    static readonly Dictionary<string, List<string>> InvoicRuleGroups = new()
+    {
+        ["Syntax (UNB/UNZ/UNH/UNT)"] = new() { "SYN_001","SYN_002","SYN_003","SYN_004","SYN_005","SYN_005b","SYN_006" },
+        ["Pflichtfelder (Kopf)"]      = new() { "PORTA_001","PORTA_001b","PORTA_002","PORTA_003","PORTA_004","PORTA_005","PORTA_006","PORTA_007","PORTA_008","PORTA_009","PORTA_010","PORTA_011","PORTA_012","PORTA_013","PORTA_014","PORTA_015","PORTA_016" },
+        ["Positionsebene (LIN)"]      = new() { "PORTA_017","PORTA_018","PORTA_019","PORTA_019b","PORTA_020","PORTA_020b","PORTA_021","PORTA_021b" },
+        ["Summen & ALC"]              = new() { "PORTA_022","PORTA_023","PORTA_024","PORTA_025","PORTA_026","PORTA_027","PORTA_028","PORTA_029","PORTA_030","PORTA_031" },
+        ["Warnungen"]                 = new() { "WARN_001","WARN_002","WARN_003","WARN_004" },
+    };
+
+    static readonly Dictionary<string, List<string>> OrdrspRuleGroups = new()
+    {
+        ["Syntax (UNB/UNZ/UNH/UNT)"] = new() { "SYN_001","SYN_002","SYN_003","SYN_004","SYN_005","SYN_005b","ORDRSP_SYN_006" },
+        ["Pflichtfelder (Kopf)"]      = new() { "ORDRSP_001","ORDRSP_002","ORDRSP_003","ORDRSP_004","ORDRSP_005","ORDRSP_006","ORDRSP_007","ORDRSP_008","ORDRSP_009","ORDRSP_010" },
+        ["Positionsebene (LIN)"]      = new() { "ORDRSP_011","ORDRSP_012","ORDRSP_013","ORDRSP_014","ORDRSP_014b","ORDRSP_015","ORDRSP_016","ORDRSP_017","ORDRSP_018" },
+        ["Warnungen"]                 = new() { "ORDRSP_WARN_001" },
+    };
+
+    static readonly Dictionary<string, List<string>> DesadvRuleGroups = new()
+    {
+        ["Syntax (UNB/UNZ/UNH/UNT)"] = new() { "SYN_001","SYN_002","SYN_003","SYN_004","SYN_005","SYN_005b","DESADV_SYN_006" },
+        ["Pflichtfelder (Kopf)"]      = new() { "DESADV_001","DESADV_002","DESADV_003","DESADV_004","DESADV_005","DESADV_006","DESADV_007","DESADV_008","DESADV_009" },
+        ["Positionsebene (LIN)"]      = new() { "DESADV_010","DESADV_011","DESADV_011b","DESADV_012","DESADV_013","DESADV_014","DESADV_016" },
+        ["Warnungen"]                 = new() { "DESADV_WARN_001","DESADV_WARN_002","DESADV_WARN_003" },
+    };
+
+    static readonly Dictionary<string, List<string>> InvrptRuleGroups = new()
+    {
+        ["Syntax (UNB/UNZ/UNH/UNT)"] = new() { "SYN_001","SYN_002","SYN_003","SYN_004","SYN_005","SYN_005b","INVRPT_SYN_006" },
+        ["Pflichtfelder (Kopf)"]      = new() { "INVRPT_001","INVRPT_002","INVRPT_003","INVRPT_004","INVRPT_005" },
+        ["Positionsebene (LIN/SG9)"]  = new() { "INVRPT_006","INVRPT_007","INVRPT_008","INVRPT_008b","INVRPT_009","INVRPT_010" },
+        ["Warnungen"]                 = new() { "INVRPT_WARN_002","INVRPT_WARN_003" },
+    };
+}

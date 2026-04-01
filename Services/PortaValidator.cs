@@ -194,20 +194,16 @@ public class PortaValidator : ValidatorBase
 
     private void ValidateLineItems(EdifactMessage msg)
     {
-        var linSegs = msg.Segments.Where(s => s.Tag == "LIN").ToList();
+        var linGroups = GroupByLeader(msg, "LIN").ToList();
 
-        if (!linSegs.Any())
+        if (linGroups.Count == 0)
         {
             Err("LIN", 0, 0, "", "PORTA_017", "porta.017.none");
             return;
         }
 
-        foreach (var lin in linSegs)
+        foreach (var (lin, group) in linGroups)
         {
-            var linIdx = msg.Segments.IndexOf(lin);
-            var nextLin = msg.Segments.Skip(linIdx + 1).FirstOrDefault(s => s.Tag == "LIN");
-            var nextLinIdx = nextLin is not null ? msg.Segments.IndexOf(nextLin) : msg.Segments.Count;
-            var group = msg.Segments.Skip(linIdx).Take(nextLinIdx - linIdx).ToList();
 
             // PORTA_017 — GTIN vorhanden (LIN DE3 component 1)
             var gtin = lin.Comp(3, 1);
@@ -246,14 +242,20 @@ public class PortaValidator : ValidatorBase
 
     private void ValidateAlcGroups(EdifactMessage msg)
     {
-        var alcs = msg.Segments.Where(s => s.Tag == "ALC").ToList();
-        foreach (var alc in alcs)
+        // Build a position index once to avoid repeated O(n) IndexOf calls
+        var segPositions = msg.Segments
+            .Select((s, i) => (Seg: s, Idx: i))
+            .ToList();
+
+        var alcPositions = segPositions.Where(x => x.Seg.Tag == "ALC").ToList();
+        foreach (var (alc, alIdx) in alcPositions)
         {
-            var alIdx   = msg.Segments.IndexOf(alc);
-            var nextAlc = msg.Segments.Skip(alIdx + 1)
-                .FirstOrDefault(s => s.Tag is "ALC" or "LIN" or "UNS" or "UNT");
-            var endIdx  = nextAlc is not null ? msg.Segments.IndexOf(nextAlc) : msg.Segments.Count;
-            var group   = msg.Segments.Skip(alIdx + 1).Take(endIdx - alIdx - 1).ToList();
+            var endIdx = segPositions
+                .Skip(alIdx + 1)
+                .FirstOrDefault(x => x.Seg.Tag is "ALC" or "LIN" or "UNS" or "UNT")
+                .Idx;
+            if (endIdx == 0) endIdx = msg.Segments.Count;
+            var group = msg.Segments.GetRange(alIdx + 1, endIdx - alIdx - 1);
 
             var hasMoa8 = group.Any(s => s.Tag == "MOA" && s.Comp(1, 1) == "8");
             var hasPcd3 = group.Any(s => s.Tag == "PCD" && s.Comp(1, 1) == "3");
@@ -265,14 +267,8 @@ public class PortaValidator : ValidatorBase
         }
 
         // PORTA_031 — Artikel-ALC (SG38): wenn ALC bei Artikelposition → MOA+131 muss da sein
-        var linSegs = msg.Segments.Where(s => s.Tag == "LIN").ToList();
-        foreach (var lin in linSegs)
+        foreach (var (lin, group) in GroupByLeader(msg, "LIN"))
         {
-            var linIdx  = msg.Segments.IndexOf(lin);
-            var nextLin = msg.Segments.Skip(linIdx + 1).FirstOrDefault(s => s.Tag == "LIN");
-            var endIdx  = nextLin is not null ? msg.Segments.IndexOf(nextLin) : msg.Segments.Count;
-            var group   = msg.Segments.Skip(linIdx).Take(endIdx - linIdx).ToList();
-
             var hasAlc    = group.Any(s => s.Tag == "ALC");
             var hasMoa131 = group.Any(s => s.Tag == "MOA" && s.Comp(1, 1) == "131");
 
@@ -306,7 +302,10 @@ public class PortaValidator : ValidatorBase
             int.TryParse(value[..4], out var y) &&
             int.TryParse(value[4..6], out var m) &&
             int.TryParse(value[6..], out var d))
-            return new DateOnly(y, m, d);
+        {
+            try { return new DateOnly(y, m, d); }
+            catch (ArgumentOutOfRangeException) { return null; }
+        }
         return null;
     }
 

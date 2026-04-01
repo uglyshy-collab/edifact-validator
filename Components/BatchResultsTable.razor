@@ -1,0 +1,74 @@
+@using edifact_validator.Pages
+@inject L10n L
+
+<div class="edi-card">
+    <div class="edi-card-header">Batch – @Results.Count @L["batch.files"]</div>
+    <table class="batch-summary-table">
+        <thead>
+            <tr>
+                <th>@L["report.seg"] / @L["admin.historyFile"]</th>
+                <th>Typ</th>
+                <th>@L["admin.statsStatus"]</th>
+                <th class="text-end">@L["admin.statsErrors"]</th>
+                <th class="text-end">@L["admin.statsWarnings"]</th>
+                <th style="width:2rem"></th>
+            </tr>
+        </thead>
+        <tbody>
+            @for (int bi = 0; bi < Results.Count; bi++)
+            {
+                var r = Results[bi];
+                var localBi = bi;
+                <tr style="cursor:pointer" @onclick="() => _expandedBatch = _expandedBatch == localBi ? null : localBi">
+                    <td style="white-space:nowrap;font-size:.82rem;">@r.FileName</td>
+                    <td><span class="badge bg-secondary" style="font-size:.7rem;">@(string.IsNullOrEmpty(r.MessageType) ? "?" : r.MessageType)</span></td>
+                    <td><span class="badge @(r.IsValid ? "bg-success" : "bg-danger")" style="font-size:.7rem;">@L[r.IsValid ? "result.valid" : "result.invalid"]</span></td>
+                    <td class="text-end" style="font-size:.82rem;">@(r.ErrorCount > 0 ? r.ErrorCount.ToString() : "–")</td>
+                    <td class="text-end" style="font-size:.82rem;">@(r.WarnCount  > 0 ? r.WarnCount.ToString()  : "–")</td>
+                    <td style="text-align:center;color:#80bed7;">@(_expandedBatch == localBi ? "▲" : "▼")</td>
+                </tr>
+                @if (_expandedBatch == localBi)
+                {
+                    <tr class="batch-expand-row">
+                        <td colspan="6">
+                            <div class="batch-expand-inner">
+                                @if (!r.Issues.Any())
+                                {
+                                    <p style="color:#28a745;font-size:.85rem;margin:0">✓ @L["report.noIssues"]</p>
+                                }
+                                else
+                                {
+                                    <table class="table table-sm edi-table mb-0" style="font-size:.78rem;">
+                                        <thead><tr>
+                                            <th>@L["report.seg"]</th>
+                                            <th>@L["report.line"]</th>
+                                            <th>@L["report.code"]</th>
+                                            <th>@L["report.description"]</th>
+                                        </tr></thead>
+                                        <tbody>
+                                            @foreach (var issue in r.Issues)
+                                            {
+                                                <tr class="@(issue.Severity == Severity.Error ? "row-error" : "row-warn")">
+                                                    <td><strong>@issue.SegmentTag</strong></td>
+                                                    <td>@(issue.LineNumber > 1 ? issue.LineNumber.ToString() : "–")</td>
+                                                    <td><code>@issue.Code</code></td>
+                                                    <td>@L[issue.MessageKey]</td>
+                                                </tr>
+                                            }
+                                        </tbody>
+                                    </table>
+                                }
+                            </div>
+                        </td>
+                    </tr>
+                }
+            }
+        </tbody>
+    </table>
+</div>
+
+@code {
+    [Parameter, EditorRequired] public List<BatchResult> Results { get; set; } = new();
+
+    int? _expandedBatch;
+}

@@ -1,0 +1,180 @@
+@inject L10n L
+@inject GlnStore Store
+
+<div class="result-toolbar admin-toolbar" style="margin-bottom:.5rem;">
+    <span style="font-size:.85rem;color:#5a8fa8;">@L.De("admin.tabStats")</span>
+    <button class="btn btn-sm btn-outline-secondary ms-auto" @onclick="ResetStats">↺ @L.De("admin.statsReset")</button>
+</div>
+
+@if (Store.Stats.TotalRuns == 0)
+{
+    <div class="edi-card"><p class="p-3 mb-0" style="color:#888;font-size:.88rem;">@L.De("admin.noStats")</p></div>
+}
+else
+{
+    @* KPI Cards *@
+    <div class="stats-cards">
+        <div class="stats-card">
+            <div class="stats-card-value">@Store.Stats.TotalRuns</div>
+            <div class="stats-card-label">@L.De("admin.statsTotal")</div>
+        </div>
+        <div class="stats-card">
+            <div class="stats-card-value" style="color:#28a745;">@Store.Stats.TotalValid</div>
+            <div class="stats-card-label">@L.De("admin.statsValid")</div>
+        </div>
+        <div class="stats-card">
+            <div class="stats-card-value" style="color:#dc3545;">@(Store.Stats.TotalRuns - Store.Stats.TotalValid)</div>
+            <div class="stats-card-label">@L.De("admin.statsInvalid")</div>
+        </div>
+        <div class="stats-card">
+            <div class="stats-card-value">@(Store.Stats.TotalRuns > 0 ? $"{(Store.Stats.TotalRuns - Store.Stats.TotalValid) * 100 / Store.Stats.TotalRuns} %" : "–")</div>
+            <div class="stats-card-label">@L.De("admin.statsErrorRate")</div>
+        </div>
+        <div class="stats-card">
+            <div class="stats-card-value" style="color:#f0ad4e;">@Store.Stats.TestFileCount</div>
+            <div class="stats-card-label">@L.De("admin.statsTests")</div>
+        </div>
+    </div>
+
+    @* Häufigste Fehler *@
+    @if (TopErrors() is var topErr && topErr.Count > 0)
+    {
+        var maxErr = topErr[0].Value;
+        <div class="edi-card mb-3">
+            <div class="edi-card-header">@L.De("admin.statsTopErrors")</div>
+            <div class="p-3">
+                <div class="stats-rule-grid">
+                @foreach (var kv in topErr)
+                {
+                    <span class="stats-bar-desc" style="white-space:nowrap;" title="@kv.Key">@L[RuleMsgKey(kv.Key)]</span>
+                    <div class="stats-bar-wrap">
+                        <div class="stats-bar" style="width:@(maxErr > 0 ? kv.Value * 100 / maxErr : 0)%"></div>
+                    </div>
+                    <span class="stats-bar-count">@kv.Value</span>
+                }
+                </div>
+            </div>
+        </div>
+    }
+
+    @* Häufige Empfehlungen *@
+    @if (TopRecommendations() is var topRec && topRec.Count > 0)
+    {
+        var maxRec = topRec[0].Value;
+        <div class="edi-card mb-3">
+            <div class="edi-card-header">@L.De("admin.statsTopRecs")</div>
+            <div class="p-3">
+                <div class="stats-rule-grid">
+                @foreach (var kv in topRec)
+                {
+                    <span class="stats-bar-desc" style="white-space:nowrap;" title="@kv.Key">@L[RuleMsgKey(kv.Key)]</span>
+                    <div class="stats-bar-wrap">
+                        <div class="stats-bar stats-bar-warn" style="width:@(maxRec > 0 ? kv.Value * 100 / maxRec : 0)%"></div>
+                    </div>
+                    <span class="stats-bar-count">@kv.Value</span>
+                }
+                </div>
+            </div>
+        </div>
+    }
+
+    @* Validierungen pro Tag *@
+    @if (Store.Stats.RunsByDate.Any())
+    {
+        <div class="edi-card mb-3">
+            <div class="edi-card-header">@L.De("admin.statsPerPeriod")</div>
+            <div class="p-3">
+                @{ var byDate = Store.Stats.RunsByDate.OrderByDescending(kv => kv.Key).Take(14).ToList();
+                   var maxDate = byDate.Any() ? byDate.Max(kv => kv.Value) : 1; }
+                @foreach (var kv in byDate)
+                {
+                    <div class="stats-bar-row">
+                        <span class="stats-bar-label" style="font-size:.75rem;">@kv.Key</span>
+                        <div class="stats-bar-wrap">
+                            <div class="stats-bar stats-bar-date" style="width:@(maxDate > 0 ? kv.Value * 100 / maxDate : 0)%"></div>
+                        </div>
+                        <span class="stats-bar-count">@kv.Value</span>
+                    </div>
+                }
+            </div>
+        </div>
+    }
+
+    @* Haupttester: Verkäufer *@
+    @if (Store.Stats.SellerFrequency.Any())
+    {
+        <div class="edi-card mb-3">
+            <div class="edi-card-header">@L.De("admin.statsTopSellers")</div>
+            <div class="p-3">
+                @{ var topSellers = Store.Stats.SellerFrequency.OrderByDescending(kv => kv.Value).Take(10).ToList();
+                   var maxSeller  = topSellers.Any() ? topSellers.Max(kv => kv.Value) : 1; }
+                @foreach (var kv in topSellers)
+                {
+                    <div class="stats-bar-row">
+                        <span class="stats-bar-label" style="font-size:.75rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="@kv.Key">@kv.Key</span>
+                        <div class="stats-bar-wrap">
+                            <div class="stats-bar stats-bar-seller" style="width:@(maxSeller > 0 ? kv.Value * 100 / maxSeller : 0)%"></div>
+                        </div>
+                        <span class="stats-bar-count">@kv.Value</span>
+                    </div>
+                }
+            </div>
+        </div>
+    }
+
+    @* Recent runs *@
+    @if (Store.Stats.RecentRuns.Any())
+    {
+        <div class="edi-card">
+            <div class="edi-card-header">@L.De("admin.statsRecentRuns")</div>
+            <div class="table-responsive">
+                <table class="table table-sm edi-table mb-0">
+                    <thead>
+                        <tr>
+                            <th>@L.De("admin.statsTimestamp")</th>
+                            <th>@L.De("admin.statsSeller")</th>
+                            <th class="text-end">@L.De("admin.statsErrors")</th>
+                            <th class="text-end">@L.De("admin.statsWarnings")</th>
+                            <th>@L.De("admin.statsStatus")</th>
+                            <th>@L.De("admin.statsIsTest")</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var run in Store.Stats.RecentRuns)
+                        {
+                            <tr>
+                                <td style="font-size:.82rem;">@run.Timestamp</td>
+                                <td style="font-size:.78rem;max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="@run.SellerName">@(string.IsNullOrEmpty(run.SellerName) ? "–" : run.SellerName)</td>
+                                <td class="text-end">@(run.ErrorCount > 0 ? run.ErrorCount.ToString() : "–")</td>
+                                <td class="text-end">@(run.WarningCount > 0 ? run.WarningCount.ToString() : "–")</td>
+                                <td><span class="badge @(run.IsValid ? "bg-success" : "bg-danger")" style="font-size:.7rem;">@L[run.IsValid ? "result.valid" : "result.invalid"]</span></td>
+                                <td>@(run.IsTest ? "🧪" : "")</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    }
+}
+
+@code {
+    async Task ResetStats() => await Store.ResetStatsAsync();
+
+    static bool IsRecommendation(string code) =>
+        code.StartsWith("WARN_") || code.StartsWith("ORDRSP_WARN_") ||
+        code.StartsWith("DESADV_WARN_") || code.StartsWith("INVRPT_WARN_");
+
+    List<KeyValuePair<string, int>> TopErrors() =>
+        Store.Stats.RuleFrequency
+            .Where(kv => !IsRecommendation(kv.Key))
+            .OrderByDescending(kv => kv.Value).Take(8).ToList();
+
+    List<KeyValuePair<string, int>> TopRecommendations() =>
+        Store.Stats.RuleFrequency
+            .Where(kv => IsRecommendation(kv.Key))
+            .OrderByDescending(kv => kv.Value).Take(8).ToList();
+
+    static string RuleMsgKey(string code) =>
+        code.ToLower().Replace("_", ".");
+}

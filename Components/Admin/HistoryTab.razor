@@ -1,0 +1,176 @@
+@inject L10n L
+@inject HistoryService History
+@inject IJSRuntime JS
+
+<div class="result-toolbar admin-toolbar" style="margin-bottom:.5rem;flex-wrap:wrap;gap:.4rem;">
+    <input class="form-control form-control-sm admin-search" style="max-width:200px;"
+           placeholder="@L.De("admin.search")" @bind="_hSearch" @bind:event="oninput" />
+    <input type="date" class="form-control form-control-sm" style="max-width:140px;"
+           @bind="_hDateFrom" @bind:event="oninput" />
+    <input type="date" class="form-control form-control-sm" style="max-width:140px;"
+           @bind="_hDateTo" @bind:event="oninput" />
+    <select class="form-select form-select-sm" style="max-width:130px;" @bind="_hMsgType">
+        <option value="">Alle Typen</option>
+        <option value="INVOIC">INVOIC</option>
+        <option value="ORDRSP">ORDRSP</option>
+        <option value="DESADV">DESADV</option>
+        <option value="INVRPT">INVRPT</option>
+    </select>
+    <label class="d-flex align-items-center gap-1" style="font-size:.82rem;white-space:nowrap;margin-left:.5rem;">
+        <input type="checkbox" @bind="_hOnlyInvalid" /> @L.De("admin.historyOnlyInvalid")
+    </label>
+    <label class="d-flex align-items-center gap-1" style="font-size:.82rem;white-space:nowrap;margin-left:.75rem;">
+        <input type="checkbox" @bind="_hOnlyTest" /> @L.De("admin.historyOnlyTest")
+    </label>
+    <div style="display:flex;gap:.4rem;margin-left:auto;">
+        <button class="btn btn-sm btn-outline-secondary" @onclick="ExportHistoryCsv">⬇ CSV</button>
+        <button class="btn btn-sm btn-outline-danger"    @onclick="ClearHistory">✕ @L.De("admin.historyClear")</button>
+    </div>
+</div>
+
+@if (_history is null)
+{
+    <div class="edi-spinner"><div class="spinner-border" role="status" style="width:2rem;height:2rem;"></div></div>
+}
+else if (!HistoryFiltered.Any())
+{
+    <div class="edi-card"><p class="p-3 mb-0" style="color:#888;font-size:.88rem;">@L.De("admin.noHistory")</p></div>
+}
+else
+{
+    <div class="edi-card">
+        <div class="edi-card-header">@L.De("admin.tabHistory") — @HistoryFiltered.Count() @L.De("admin.historyEntries")</div>
+        <div>
+            <table class="table table-sm edi-table mb-0" style="table-layout:fixed;width:100%;">
+                <thead>
+                    <tr>
+                        <th style="width:148px">@L.De("admin.statsTimestamp")</th>
+                        <th style="width:22%">@L.De("admin.historyFile")</th>
+                        <th style="width:70px">Typ</th>
+                        <th style="width:18%">@L.De("admin.statsSeller")</th>
+                        <th class="text-center" style="width:36px">@L.De("admin.statsIsTest")</th>
+                        <th class="text-end" style="width:44px">@L.De("admin.statsErrors")</th>
+                        <th class="text-end" style="width:52px">@L.De("admin.statsWarnings")</th>
+                        <th style="width:72px">@L.De("admin.statsStatus")</th>
+                        <th style="width:30px"></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var rec in HistoryFiltered)
+                    {
+                        var expanded = _expandedId == rec.Id;
+                        <tr class="@(!rec.IsValid ? "row-error" : "")">
+                            <td style="font-size:.78rem;white-space:nowrap;">@rec.Timestamp</td>
+                            <td style="font-size:.78rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="@rec.FileName">@rec.FileName</td>
+                            <td><span class="badge bg-secondary" style="font-size:.68rem;">@(string.IsNullOrEmpty(rec.MessageType) ? "?" : rec.MessageType)</span></td>
+                            <td style="font-size:.78rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="@(rec.SellerName + (string.IsNullOrEmpty(rec.SellerGln) ? "" : " / " + rec.SellerGln))">
+                                @(string.IsNullOrEmpty(rec.SellerName) ? rec.SellerGln : rec.SellerName)
+                            </td>
+                            <td class="text-center">@(rec.IsTest ? "🧪" : "")</td>
+                            <td class="text-end">@(rec.ErrorCount   > 0 ? rec.ErrorCount.ToString()   : "–")</td>
+                            <td class="text-end">@(rec.WarningCount > 0 ? rec.WarningCount.ToString() : "–")</td>
+                            <td><span class="badge @(rec.IsValid ? "bg-success" : "bg-danger")" style="font-size:.7rem;">@L[rec.IsValid ? "result.valid" : "result.invalid"]</span></td>
+                            <td>
+                                @if (rec.ErrorCount > 0 || rec.WarningCount > 0)
+                                {
+                                    <button class="btn btn-xs btn-outline-secondary" style="padding:0 4px;font-size:.7rem;"
+                                            @onclick="() => ToggleExpand(rec.Id)">
+                                        @(expanded ? "▲" : "▼")
+                                    </button>
+                                }
+                            </td>
+                        </tr>
+                        @if (expanded)
+                        {
+                            var issues = _expandedIssues;
+                            <tr>
+                                <td colspan="9" style="background:#f8f8f8;padding:.5rem 1rem;">
+                                    @if (issues is null)
+                                    {
+                                        <div class="edi-spinner" style="padding:.5rem 0;"><div class="spinner-border spinner-border-sm" role="status"></div></div>
+                                    }
+                                    else
+                                    {
+                                        <table class="table table-sm mb-0" style="font-size:.76rem;">
+                                            <thead><tr><th>Code</th><th>Segment</th><th>Zeile</th><th>Beschreibung</th></tr></thead>
+                                            <tbody>
+                                                @foreach (var issue in issues)
+                                                {
+                                                    <tr class="@(issue.Severity == "Error" ? "row-error" : "row-warn")">
+                                                        <td><code>@issue.Code</code></td>
+                                                        <td>@issue.SegmentTag</td>
+                                                        <td>@(issue.LineNumber > 0 ? issue.LineNumber.ToString() : "–")</td>
+                                                        <td>@L[issue.MessageKey]</td>
+                                                    </tr>
+                                                }
+                                            </tbody>
+                                        </table>
+                                    }
+                                </td>
+                            </tr>
+                        }
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter] public EventCallback<int> OnCountChanged { get; set; }
+
+    List<ValidationRecord>? _history;
+    string    _hSearch      = "";
+    DateTime? _hDateFrom;
+    DateTime? _hDateTo;
+    bool      _hOnlyInvalid = false;
+    bool      _hOnlyTest    = false;
+    string    _hMsgType     = "";
+    long      _expandedId   = -1;
+    List<IssueRecord>? _expandedIssues;
+
+    IEnumerable<ValidationRecord> HistoryFiltered => (_history ?? Enumerable.Empty<ValidationRecord>())
+        .Where(r =>
+            (string.IsNullOrEmpty(_hSearch)
+                || r.FileName.Contains(_hSearch, StringComparison.OrdinalIgnoreCase)
+                || r.SellerName.Contains(_hSearch, StringComparison.OrdinalIgnoreCase)
+                || r.SellerGln.Contains(_hSearch, StringComparison.OrdinalIgnoreCase))
+            && (!_hOnlyInvalid || !r.IsValid)
+            && (!_hOnlyTest    ||  r.IsTest)
+            && (string.IsNullOrEmpty(_hMsgType) || r.MessageType == _hMsgType)
+            && (_hDateFrom is null || DateTime.TryParseExact(r.Timestamp[..10], "dd.MM.yyyy",
+                    System.Globalization.CultureInfo.InvariantCulture,
+                    System.Globalization.DateTimeStyles.None, out var d) && d >= _hDateFrom.Value)
+            && (_hDateTo   is null || DateTime.TryParseExact(r.Timestamp[..10], "dd.MM.yyyy",
+                    System.Globalization.CultureInfo.InvariantCulture,
+                    System.Globalization.DateTimeStyles.None, out var d2) && d2 <= _hDateTo.Value.AddDays(1)));
+
+    public async Task LoadAsync()
+    {
+        if (_history is null)
+        {
+            _history = await History.GetRecentAsync();
+            await OnCountChanged.InvokeAsync(_history.Count);
+        }
+    }
+
+    async Task ToggleExpand(long id)
+    {
+        if (_expandedId == id) { _expandedId = -1; _expandedIssues = null; return; }
+        _expandedId     = id;
+        _expandedIssues = null;
+        StateHasChanged();
+        _expandedIssues = await History.GetIssuesAsync(id);
+    }
+
+    async Task ClearHistory()
+    {
+        await History.ClearAsync();
+        _history        = new();
+        _expandedId     = -1;
+        _expandedIssues = null;
+        await OnCountChanged.InvokeAsync(0);
+    }
+
+    async Task ExportHistoryCsv() => await History.DownloadCsvAsync(JS);
+}

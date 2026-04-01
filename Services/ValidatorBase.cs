@@ -60,6 +60,26 @@ public abstract class ValidatorBase
             System.Globalization.NumberStyles.Any,
             System.Globalization.CultureInfo.InvariantCulture, out var r) ? r : 0m;
 
+    /// <summary>
+    /// Groups all segments between consecutive occurrences of <paramref name="leaderTag"/>.
+    /// Returns (leaderSegment, groupIncludingLeader) tuples. O(n) instead of O(n²).
+    /// </summary>
+    protected static IEnumerable<(EdifactSegment Leader, List<EdifactSegment> Group)>
+        GroupByLeader(EdifactMessage msg, string leaderTag)
+    {
+        var positions = msg.Segments
+            .Select((s, i) => (Seg: s, Idx: i))
+            .Where(x => x.Seg.Tag == leaderTag)
+            .ToList();
+
+        for (int i = 0; i < positions.Count; i++)
+        {
+            var (seg, idx) = positions[i];
+            var endIdx = i + 1 < positions.Count ? positions[i + 1].Idx : msg.Segments.Count;
+            yield return (seg, msg.Segments.GetRange(idx, endIdx - idx));
+        }
+    }
+
     protected List<ValidationIssue> FinalizeIssues() =>
         _issues.OrderBy(i => i.Severity).ThenBy(i => i.LineNumber).ToList();
 

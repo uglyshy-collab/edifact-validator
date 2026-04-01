@@ -3,7 +3,7 @@ using EdifactValidator.Models;
 namespace edifact_validator.Pages;
 
 /// <summary>Result entry for batch validation mode.</summary>
-internal sealed class BatchResult
+public sealed class BatchResult
 {
     public BatchResult(string fileName, string messageType, List<ValidationIssue> issues, EdifactInterchange interchange)
     {

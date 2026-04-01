@@ -1,0 +1,99 @@
+@inject L10n L
+@inject GlnStore GlnStore
+
+<div class="upload-section">
+    <h2>@L["upload.title"]</h2>
+    <p class="subtitle">@L["upload.subtitle"]</p>
+
+    @* ── GLN branch selector ── *@
+    <div class="gln-select-panel">
+        <div class="gln-select-header">@L["gln.title"]</div>
+        <p class="gln-select-hint">@L["gln.subtitle"]</p>
+        <div class="gln-selects">
+            <div class="gln-field">
+                <label>@L["gln.group"]</label>
+                <select class="form-select form-select-sm" value="@_selectedGroup" @onchange="OnGroupChanged">
+                    <option value="">@L["gln.selectGroup"]</option>
+                    @foreach (var g in Groups)
+                    {
+                        <option value="@g">@g</option>
+                    }
+                </select>
+            </div>
+            <div class="gln-field">
+                <label>@L["gln.branch"]</label>
+                <select class="form-select form-select-sm" disabled="@string.IsNullOrEmpty(_selectedGroup)"
+                        @bind="_selectedEntryKey">
+                    <option value="">@L["gln.selectBranch"]</option>
+                    @foreach (var e in FilteredEntries)
+                    {
+                        <option value="@GlnKey(e)">@e.Label</option>
+                    }
+                </select>
+            </div>
+        </div>
+        @if (SelectedEntry is { } sel)
+        {
+            <div class="gln-preview">
+                <span class="gln-preview-title">@L["gln.expected"]</span>
+                <div class="gln-preview-rows">
+                    <div class="gln-preview-row">
+                        <span class="gln-preview-label">@L["invoice.buyer"]</span>
+                        <code>NAD+BY</code>
+                        <span>@(string.IsNullOrEmpty(sel.GlnBy) ? L["gln.notSet"] : sel.GlnBy)</span>
+                    </div>
+                    @if (!string.IsNullOrEmpty(sel.GlnIv))
+                    {
+                        <div class="gln-preview-row">
+                            <span class="gln-preview-label">@L["invoice.invoicee"]</span>
+                            <code>NAD+IV</code>
+                            <span>@sel.GlnIv</span>
+                        </div>
+                    }
+                    @if (!string.IsNullOrEmpty(sel.GlnDp))
+                    {
+                        <div class="gln-preview-row">
+                            <span class="gln-preview-label">@L["invoice.delivery"]</span>
+                            <code>NAD+DP</code>
+                            <span>@sel.GlnDp</span>
+                        </div>
+                    }
+                </div>
+            </div>
+        }
+    </div>
+
+    <div class="upload-btn-wrap" id="edi-upload-zone">
+        <div class="upload-btn">
+            <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" fill="currentColor" viewBox="0 0 16 16">
+                <path d="M.5 9.9a.5.5 0 0 1 .5.5v2.5a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-2.5a.5.5 0 0 1 1 0v2.5a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2v-2.5a.5.5 0 0 1 .5-.5"/>
+                <path d="M7.646 1.146a.5.5 0 0 1 .708 0l3 3a.5.5 0 0 1-.708.708L8.5 2.707V11.5a.5.5 0 0 1-1 0V2.707L5.354 4.854a.5.5 0 1 1-.708-.708z"/>
+            </svg>
+            @L["upload.selectFile"]
+        </div>
+        <div class="upload-drop-hint">@L["upload.dropHint"]</div>
+        <InputFile id="edi-file-input" OnChange="OnFileChanged" accept=".edi,.txt" class="upload-input-overlay" multiple />
+    </div>
+</div>
+
+@code {
+    [Parameter] public EventCallback<InputFileChangeEventArgs> OnFileSelected { get; set; }
+
+    string _selectedGroup    = "";
+    string _selectedEntryKey = "";
+
+    IEnumerable<string>   Groups          => GlnStore.Entries.Select(e => e.Group).Distinct();
+    IEnumerable<GlnEntry> FilteredEntries => GlnStore.Entries.Where(e => e.Group == _selectedGroup);
+    public GlnEntry?      SelectedEntry   => GlnStore.Entries.FirstOrDefault(e => GlnKey(e) == _selectedEntryKey);
+
+    static string GlnKey(GlnEntry e) => $"{e.Group}|{e.FilNr}";
+
+    void OnGroupChanged(ChangeEventArgs ev)
+    {
+        _selectedGroup    = ev.Value?.ToString() ?? "";
+        _selectedEntryKey = "";
+    }
+
+    async Task OnFileChanged(InputFileChangeEventArgs e) =>
+        await OnFileSelected.InvokeAsync(e);
+}

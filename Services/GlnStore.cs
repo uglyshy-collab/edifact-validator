@@ -5,6 +5,9 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.JSInterop;
 using EdifactValidator.Models;
 
+// Password format: "pbkdf2:{iterations}:{salt_hex}:{hash_hex}"
+// Legacy format (migration): 64-char hex SHA-256 string
+
 namespace EdifactValidator.Services;
 
 public class GlnStore
@@ -23,16 +26,50 @@ public class GlnStore
     public ValidationStats Stats { get; private set; } = new();
 
     private string _credUser;
-    private string _credPassword; // stored as SHA-256 hex
+    private string _credPassword = ""; // stored as "pbkdf2:{iterations}:{salt_hex}:{hash_hex}"
+    private string _pendingDefaultPassword = ""; // plaintext until first InitAsync, then cleared
 
-    private static string HashPassword(string pw) =>
-        Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(pw))).ToLowerInvariant();
+    // 1_000 iterations: near-instant in WASM single thread (~5 ms), still provides salt-based protection.
+    // Key stretching has minimal value here because the hash lives in client-side LocalStorage anyway.
+    private const int Pbkdf2Iterations = 1_000;
+
+    private static string HashPassword(string pw)
+    {
+        var salt = RandomNumberGenerator.GetBytes(16);
+        var hash = Rfc2898DeriveBytes.Pbkdf2(
+            Encoding.UTF8.GetBytes(pw), salt, Pbkdf2Iterations, HashAlgorithmName.SHA256, 32);
+        return $"pbkdf2:{Pbkdf2Iterations}:{Convert.ToHexString(salt).ToLowerInvariant()}:{Convert.ToHexString(hash).ToLowerInvariant()}";
+    }
+
+    private static bool VerifyPassword(string pw, string stored)
+    {
+        if (stored.StartsWith("pbkdf2:"))
+        {
+            var parts = stored.Split(':');
+            if (parts.Length != 4 ||
+                !int.TryParse(parts[1], out var iterations)) return false;
+            try
+            {
+                var salt = Convert.FromHexString(parts[2]);
+                var expected = Convert.FromHexString(parts[3]);
+                var actual = Rfc2898DeriveBytes.Pbkdf2(
+                    Encoding.UTF8.GetBytes(pw), salt, iterations, HashAlgorithmName.SHA256, 32);
+                return CryptographicOperations.FixedTimeEquals(expected, actual);
+            }
+            catch { return false; }
+        }
+        // Legacy: SHA-256 hex
+        var sha256 = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(pw))).ToLowerInvariant();
+        return sha256 == stored;
+    }
 
     public GlnStore(IJSRuntime js, IConfiguration config)
     {
-        _js          = js;
-        _credUser     = config["Admin:DefaultUser"]     ?? "admin";
-        _credPassword = HashPassword(config["Admin:DefaultPassword"] ?? "porta2024");
+        _js                    = js;
+        _credUser              = config["Admin:DefaultUser"]     ?? "admin";
+        _pendingDefaultPassword = config["Admin:DefaultPassword"] ?? string.Empty;
+        // HashPassword is NOT called here — PBKDF2 must not block the WASM UI thread at startup.
+        // It is deferred to InitAsync which runs in an async context.
     }
 
     public async Task InitAsync()
@@ -40,6 +77,7 @@ public class GlnStore
         if (Initialized) return;
 
         // Load credentials into memory
+        bool credsLoaded = false;
         try
         {
             var cj = await _js.InvokeAsync<string?>("ls.get", CredsKey);
@@ -48,20 +86,34 @@ public class GlnStore
                 var d = JsonSerializer.Deserialize<JsonElement>(cj);
                 _credUser = d.GetProperty("user").GetString() ?? "admin";
                 var stored = d.GetProperty("password").GetString() ?? "";
-                // migrate plain-text passwords to SHA-256 hash on first load
-                if (stored.Length != 64 || !stored.All(c => c is >= '0' and <= '9' or >= 'a' and <= 'f'))
+                if (stored.StartsWith("pbkdf2:"))
                 {
+                    // Already PBKDF2 — use as-is
+                    _credPassword = stored;
+                }
+                else if (stored.Length == 64 && stored.All(c => c is >= '0' and <= '9' or >= 'a' and <= 'f'))
+                {
+                    // Legacy SHA-256 — keep for now, will upgrade to PBKDF2 on next login
+                    _credPassword = stored;
+                }
+                else
+                {
+                    // Plaintext — upgrade to PBKDF2 immediately (plaintext available here)
                     _credPassword = HashPassword(stored);
                     var migrated = JsonSerializer.Serialize(new { user = _credUser, password = _credPassword });
                     await _js.InvokeVoidAsync("ls.set", CredsKey, migrated);
                 }
-                else
-                {
-                    _credPassword = stored;
-                }
+                credsLoaded = true;
             }
         }
         catch { /* keep defaults */ }
+
+        // No stored creds: hash the default password now (safe — we are inside async InitAsync)
+        if (!credsLoaded)
+        {
+            _credPassword = HashPassword(_pendingDefaultPassword);
+        }
+        _pendingDefaultPassword = string.Empty; // clear plaintext from memory
 
         // Load GLN entries
         bool entriesLoaded = false;
@@ -121,9 +173,12 @@ public class GlnStore
         Initialized = true;
     }
 
-    public bool Login(string user, string password)
+    public async Task<bool> LoginAsync(string user, string password)
     {
-        IsAuthenticated = user.Trim() == _credUser && HashPassword(password) == _credPassword;
+        await Task.Yield(); // yield to UI before blocking computation
+        IsAuthenticated = user.Trim() == _credUser && VerifyPassword(password, _credPassword);
+        if (IsAuthenticated && !_credPassword.StartsWith("pbkdf2:"))
+            await SaveCredentialsAsync(_credUser, password); // Upgrade legacy hash to PBKDF2
         Changed?.Invoke();
         return IsAuthenticated;
     }

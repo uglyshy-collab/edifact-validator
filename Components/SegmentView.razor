@@ -1,0 +1,96 @@
+@inject L10n L
+@inject IJSRuntime JS
+
+<div class="edi-card">
+    <div class="edi-card-header">@L["segments.tab"] — @Interchange.AllSegments.Count Segmente</div>
+    <div class="p-2 seg-list">
+        @{
+            var issuesByLine = Issues
+                .Where(i => i.LineNumber >= 0)
+                .GroupBy(i => i.LineNumber)
+                .ToDictionary(g => g.Key, g => g.Max(i => i.Severity));
+            var multiLine = Interchange.AllSegments.Max(s => s.LineNumber) > 1;
+        }
+        @foreach (var seg in Interchange.AllSegments)
+        {
+            var hasSev   = issuesByLine.TryGetValue(seg.LineNumber, out var sev);
+            var rowClass = hasSev ? (sev == Severity.Error ? "seg-has-error" : "seg-has-warn") : "";
+            var isExpanded = _expandedSegs.Contains(seg.SegmentIndex);
+            <div id="seg-@seg.LineNumber" class="seg-row @rowClass" @onclick="() => ToggleSeg(seg.SegmentIndex)">
+                <span class="seg-chevron">@(isExpanded ? "▾" : "▸")</span>
+                @if (multiLine) { <span class="seg-idx">@seg.LineNumber</span> }
+                <span class="seg-tag @SegTagClass(seg.Tag)">@seg.Tag</span>
+                @if (!isExpanded)
+                {
+                    <span class="seg-content">@SegContent(seg)</span>
+                }
+                @if (hasSev)
+                {
+                    <span style="font-size:.8rem;margin-left:auto;flex-shrink:0;color:@(sev==Severity.Error ? "#dc3545" : "#f0ad4e")">
+                        @(sev == Severity.Error ? "✕" : "⚠")
+                    </span>
+                }
+            </div>
+            @if (isExpanded)
+            {
+                <div class="seg-expand-panel">
+                    @for (int ei = 1; ei < seg.Elements.Length; ei++)
+                    {
+                        var comps = seg.Elements[ei];
+                        <div class="seg-elem-row">
+                            <span class="seg-de-idx">DE@(ei)</span>
+                            @if (comps.Length == 1)
+                            {
+                                <span class="seg-de-val">@comps[0]</span>
+                            }
+                            else
+                            {
+                                <span class="seg-de-val">@string.Join("  ", comps.Select((c, i) => $"C{i + 1}: {c}"))</span>
+                            }
+                        </div>
+                    }
+                </div>
+            }
+        }
+    </div>
+</div>
+
+@code {
+    [Parameter, EditorRequired] public EdifactInterchange Interchange { get; set; } = null!;
+    [Parameter, EditorRequired] public List<ValidationIssue> Issues { get; set; } = new();
+
+    readonly HashSet<int> _expandedSegs = new();
+
+    void ToggleSeg(int idx)
+    {
+        if (!_expandedSegs.Remove(idx)) _expandedSegs.Add(idx);
+    }
+
+    public async Task ExpandAndScrollToAsync(int lineNumber)
+    {
+        var seg = Interchange.AllSegments.FirstOrDefault(s => s.LineNumber == lineNumber);
+        if (seg is not null) _expandedSegs.Add(seg.SegmentIndex);
+        StateHasChanged();
+        await Task.Delay(50);
+        await JS.InvokeVoidAsync("scrollToId", $"seg-{lineNumber}");
+    }
+
+    static string SegTagClass(string tag) => tag switch
+    {
+        "UNB" or "UNZ" or "UNA"        => "tag-env",
+        "UNH" or "UNT"                  => "tag-msg",
+        "BGM"                           => "tag-bgm",
+        "DTM"                           => "tag-dtm",
+        "NAD"                           => "tag-nad",
+        "RFF"                           => "tag-rff",
+        "LIN" or "PIA" or "IMD"         => "tag-lin",
+        "QTY"                           => "tag-qty",
+        "PRI" or "MOA" or "ALC"         => "tag-pri",
+        "TAX" or "CUX"                  => "tag-tax",
+        "UNS" or "CNT"                  => "tag-uns",
+        _                               => "tag-default"
+    };
+
+    static string SegContent(EdifactSegment seg) =>
+        string.Join("+", seg.Elements.Skip(1).Select(e => string.Join(":", e)));
+}
