@@ -123,21 +123,21 @@ public class InvrptValidator
             else if (ParseDecimal(qty.Comp(1, 2)) < 0)
                 Err("QTY", qty.SegmentIndex, qty.LineNumber, "DE1.C2", "INVRPT_008b", "invrpt.008b");
 
-            // INVRPT_009 — DTM+169 (Lieferzeit zum Endkunden)
-            var dtm169 = group.FirstOrDefault(s => s.Tag == "DTM" && s.Comp(1, 1) == "169");
-            if (dtm169 is null)
-                Err("DTM", lin.SegmentIndex, lin.LineNumber, "DE1.C1=169", "INVRPT_009", "invrpt.009");
-
             // INVRPT_010 — Verfügbarkeit (STS/INV 9011) muss 71 oder 72 sein
             var sts = group.FirstOrDefault(s => s.Tag == "STS" || s.Tag == "INV");
+            var availCode = sts?.El(2) ?? string.Empty;
             if (sts is not null)
             {
-                var avail = sts.El(1);
-                if (avail != "71" && avail != "72")
-                    Err(sts.Tag, sts.SegmentIndex, sts.LineNumber, "DE1=71/72", "INVRPT_010", "invrpt.010");
+                if (availCode != "71" && availCode != "72")
+                    Err(sts.Tag, sts.SegmentIndex, sts.LineNumber, "DE2.C1=71/72", "INVRPT_010", "invrpt.010");
             }
             else
-                Err("STS", lin.SegmentIndex, lin.LineNumber, "DE1=71/72", "INVRPT_010", "invrpt.010");
+                Err("STS", lin.SegmentIndex, lin.LineNumber, "DE2.C1=71/72", "INVRPT_010", "invrpt.010");
+
+            // INVRPT_009 — DTM+169 (Lieferzeit) nur bei verfügbaren Artikeln (STS=71) erforderlich
+            var dtm169 = group.FirstOrDefault(s => s.Tag == "DTM" && s.Comp(1, 1) == "169");
+            if (dtm169 is null && availCode == "71")
+                Err("DTM", lin.SegmentIndex, lin.LineNumber, "DE1.C1=169", "INVRPT_009", "invrpt.009");
 
             // INVRPT_WARN_002 — PIA+SA (Lieferantenartikel-Nr.) fehlt
             var piaSa = group.FirstOrDefault(s => s.Tag == "PIA" && s.Comp(2, 2) == "SA");
