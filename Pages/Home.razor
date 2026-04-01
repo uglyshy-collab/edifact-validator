@@ -131,6 +131,7 @@
                         </svg>
                         @L["upload.selectFile"]
                     </div>
+                    <div class="upload-drop-hint">@L["upload.dropHint"]</div>
                     <InputFile id="edi-file-input" OnChange="OnFileSelected" accept=".edi,.txt" class="upload-input-overlay" multiple />
                 </div>
             </div>
@@ -552,6 +553,7 @@
                                     .Where(i => i.LineNumber >= 0)
                                     .GroupBy(i => i.LineNumber)
                                     .ToDictionary(g => g.Key, g => g.Max(i => i.Severity));
+                                var multiLine = _interchange!.AllSegments.Max(s => s.LineNumber) > 1;
                             }
                             @foreach (var seg in _interchange!.AllSegments)
                             {
@@ -560,7 +562,7 @@
                                 var isExpanded = _expandedSegs.Contains(seg.SegmentIndex);
                                 <div id="seg-@seg.LineNumber" class="seg-row @rowClass" @onclick="() => ToggleSeg(seg.SegmentIndex)">
                                     <span class="seg-chevron">@(isExpanded ? "▾" : "▸")</span>
-                                    <span class="seg-idx">@seg.LineNumber</span>
+                                    @if (multiLine) { <span class="seg-idx">@seg.LineNumber</span> }
                                     <span class="seg-tag @SegTagClass(seg.Tag)">@seg.Tag</span>
                                     @if (!isExpanded)
                                     {

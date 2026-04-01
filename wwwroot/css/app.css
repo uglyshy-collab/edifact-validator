@@ -190,19 +190,48 @@ a:hover { color: #6a9dd3; }
 /* Upload wrapper: positions the transparent InputFile over the styled button */
 .upload-btn-wrap {
     position: relative;
-    display: inline-block;
-    margin-top: 3rem;
-    border-radius: 4px;
-    transition: box-shadow .15s, background .15s;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    max-width: 560px;
+    margin: 2rem auto 0;
+    padding: 2rem 1.5rem;
+    border: 2px dashed rgba(128,190,215,.55);
+    border-radius: 10px;
+    background: rgba(128,190,215,.04);
+    transition: border-color .15s, background .15s;
+    cursor: pointer;
+}
+.upload-btn-wrap:hover {
+    border-color: rgba(128,190,215,.9);
+    background: rgba(128,190,215,.08);
 }
 .upload-btn-wrap.drag-over {
-    outline: 3px dashed #80bed7;
-    outline-offset: 6px;
+    border-color: #80bed7;
+    background: rgba(128,190,215,.14);
 }
 .upload-btn-wrap.drag-over .upload-btn {
-    opacity: .8;
-    background-color: rgba(128,190,215,.7);
+    opacity: .85;
+    background-color: rgba(128,190,215,.8);
 }
+.upload-drop-hint {
+    margin-top: .65rem;
+    font-size: .78rem;
+    color: #9ab8c8;
+    font-family: 'Sometype Mono', monospace;
+    pointer-events: none;
+}
+.theme-dark .upload-btn-wrap {
+    border-color: rgba(128,190,215,.25);
+    background: rgba(128,190,215,.03);
+}
+.theme-dark .upload-btn-wrap:hover {
+    border-color: rgba(128,190,215,.6);
+    background: rgba(128,190,215,.07);
+}
+.theme-dark .upload-drop-hint { color: #5a8fa8; }
 
 .upload-input-overlay {
     position: absolute;
@@ -652,16 +681,13 @@ a:hover { color: #6a9dd3; }
 .theme-dark .sev-select-error,
 .theme-dark .sev-select-warning,
 .theme-dark .sev-select-default {
-    appearance: none; -webkit-appearance: none;
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath fill='%2380bed7' d='M6 8L0 0h12z'/%3E%3C/svg%3E");
-    background-repeat: no-repeat;
-    background-position: right .5rem center;
-    background-size: .65rem;
-    padding-right: 1.6rem;
+    color-scheme: dark;
+    border-width: 1px !important;
+    border-style: solid !important;
 }
-.theme-dark .sev-select-error   { background-color: #3d1818 !important; border-color: #7a3030; color: #f08080 !important; }
-.theme-dark .sev-select-warning { background-color: #2e2510 !important; border-color: #7a6020; color: #d4a840 !important; }
-.theme-dark .sev-select-default { background-color: #1a2e3d !important; border-color: #2a4a60; color: #90bdd0 !important; }
+.theme-dark .sev-select-error   { background-color: #3d1818 !important; border-color: #c0504040 !important; color: #f08080 !important; }
+.theme-dark .sev-select-warning { background-color: #2e2510 !important; border-color: #c09020 !important; color: #d4a840 !important; }
+.theme-dark .sev-select-default { background-color: #1e3347 !important; border-color: #4a8aa8 !important; color: #a0d0e8 !important; }
 .theme-dark .rule-detail-row.rule-row-error   .issue-detail-panel { border-left-color: #3a5a70; }
 .theme-dark .rule-detail-row.rule-row-warning .issue-detail-panel { border-left-color: #3a5020; }
 
